@@ -1,18 +1,151 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, decimal, pgEnum } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { users } from "./models/auth";
 
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+export * from "./models/auth";
+
+// Enums
+export const roleEnum = pgEnum("role", ["admin", "engineer", "account"]);
+export const serviceTypeEnum = pgEnum("service_type", ["L1", "L2", "L3"]);
+export const serviceStatusEnum = pgEnum("service_status", ["pending", "accepted", "in_progress", "completed", "billed"]);
+
+// Extend users table with role - we'll do this by defining a separate profile table 
+// or just assuming we can add to the auth schema. 
+// Since we can't easily modify the imported auth.ts without file edits, 
+// let's create a 'user_roles' table or just assume we'll edit auth.ts later.
+// Actually, editing auth.ts is better. I will do that in a separate step. 
+// For now, let's assume 'users' has 'role'. 
+// Wait, I can't assume that if I don't add it.
+// I will create a `profiles` table to extend user data.
+export const profiles = pgTable("profiles", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id), // Link to auth users
+  role: roleEnum("role").default("engineer").notNull(),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const inventory = pgTable("inventory", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  sku: text("sku").notNull().unique(),
+  quantity: integer("quantity").notNull().default(0),
+  criticalLevel: integer("critical_level").notNull().default(5),
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  description: text("description"),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+export const serviceRequests = pgTable("service_requests", {
+  id: serial("id").primaryKey(),
+  pilotName: text("pilot_name").notNull(),
+  droneNo: text("drone_no").notNull(),
+  droneSerial: text("drone_serial").notNull(),
+  pilotAddress: text("pilot_address").notNull(),
+  contactDetails: text("contact_details").notNull(),
+  complaint: text("complaint").notNull(),
+  partsRequested: text("parts_requested"), // Initial request
+  serviceType: serviceTypeEnum("service_type").notNull(),
+  status: serviceStatusEnum("status").default("pending").notNull(),
+  
+  // Assigned to (Engineer)
+  assignedToId: text("assigned_to_id").references(() => users.id),
+  tentativeServiceDate: timestamp("tentative_service_date"),
+  
+  // Completion details
+  completedAt: timestamp("completed_at"),
+  
+  // Documents (URLs)
+  jobSheetUrl: text("job_sheet_url"),
+  feedbackFormUrl: text("feedback_form_url"),
+  crashReportUrl: text("crash_report_url"),
+  logReportUrl: text("log_report_url"),
+  
+  // Billing
+  invoiceUrl: text("invoice_url"),
+  challanUrl: text("challan_url"),
+  billNo: text("bill_no"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const serviceImages = pgTable("service_images", {
+  id: serial("id").primaryKey(),
+  serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
+  imageUrl: text("image_url").notNull(),
+  type: text("type").notNull(), // 'before' or 'after'
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const partsConsumed = pgTable("parts_consumed", {
+  id: serial("id").primaryKey(),
+  serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
+  inventoryId: integer("inventory_id").notNull().references(() => inventory.id),
+  quantity: integer("quantity").notNull(),
+  recordedAt: timestamp("recorded_at").defaultNow(),
+});
+
+// Relations
+export const profilesRelations = relations(profiles, ({ one }) => ({
+  user: one(users, {
+    fields: [profiles.userId],
+    references: [users.id],
+  }),
+}));
+
+export const serviceRequestsRelations = relations(serviceRequests, ({ one, many }) => ({
+  assignedTo: one(users, {
+    fields: [serviceRequests.assignedToId],
+    references: [users.id],
+  }),
+  images: many(serviceImages),
+  partsConsumed: many(partsConsumed),
+}));
+
+export const serviceImagesRelations = relations(serviceImages, ({ one }) => ({
+  serviceRequest: one(serviceRequests, {
+    fields: [serviceImages.serviceRequestId],
+    references: [serviceRequests.id],
+  }),
+}));
+
+export const partsConsumedRelations = relations(partsConsumed, ({ one }) => ({
+  serviceRequest: one(serviceRequests, {
+    fields: [partsConsumed.serviceRequestId],
+    references: [serviceRequests.id],
+  }),
+  item: one(inventory, {
+    fields: [partsConsumed.inventoryId],
+    references: [inventory.id],
+  }),
+}));
+
+// Schemas
+export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true, updatedAt: true });
+export const insertServiceRequestSchema = createInsertSchema(serviceRequests).omit({ 
+  id: true, 
+  status: true, 
+  completedAt: true, 
+  createdAt: true 
+});
+export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true });
+export const insertPartsConsumedSchema = createInsertSchema(partsConsumed).omit({ id: true, recordedAt: true });
+
+// Types
+export type Inventory = typeof inventory.$inferSelect;
+export type InsertInventory = z.infer<typeof insertInventorySchema>;
+export type ServiceRequest = typeof serviceRequests.$inferSelect;
+export type InsertServiceRequest = z.infer<typeof insertServiceRequestSchema>;
+export type Profile = typeof profiles.$inferSelect;
+export type ServiceImage = typeof serviceImages.$inferSelect;
+export type PartConsumed = typeof partsConsumed.$inferSelect;
+
+// Custom types for API
+export type CreateServiceRequest = z.infer<typeof insertServiceRequestSchema>;
+export type UpdateServiceRequest = Partial<CreateServiceRequest> & {
+  status?: typeof serviceStatusEnum.enumValues[number];
+  tentativeServiceDate?: string | Date; // Allow string for JSON
+};
+
