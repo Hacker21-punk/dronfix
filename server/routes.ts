@@ -235,11 +235,12 @@ export async function registerRoutes(
         role
       });
       res.status(201).json(profile);
-    } catch (err) {
+    } catch (err: any) {
+      console.error("Error creating user:", err);
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
-      res.status(500).json({ message: "Error creating user" });
+      res.status(500).json({ message: "Error creating user: " + err.message });
     }
   });
 

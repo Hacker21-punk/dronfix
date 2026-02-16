@@ -1,6 +1,6 @@
 import { useDashboardStats } from "@/hooks/use-service-requests";
 import { StatCard } from "@/components/stat-card";
-import { Package, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
+import { Package, AlertTriangle, CheckCircle2, Clock, Wrench } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { useCurrentUser } from "@/hooks/use-users";
 import { formatCurrency } from "@/lib/utils";
