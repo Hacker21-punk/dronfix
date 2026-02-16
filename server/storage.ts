@@ -127,15 +127,27 @@ export class DatabaseStorage implements IStorage {
     if (!request) return undefined;
     
     const images = await this.getServiceImages(id);
-    // Fetch parts with inventory details
-    const parts = await db.select({
+    const partsRaw = await db.select({
       id: partsConsumed.id,
       serviceRequestId: partsConsumed.serviceRequestId,
       inventoryId: partsConsumed.inventoryId,
       quantity: partsConsumed.quantity,
       recordedAt: partsConsumed.recordedAt,
-      // We can also select inventory name here if we join, but for now strict typing
-    }).from(partsConsumed).where(eq(partsConsumed.serviceRequestId, id));
+      itemName: inventory.name,
+      itemPrice: inventory.price,
+      itemSku: inventory.sku,
+    }).from(partsConsumed)
+      .leftJoin(inventory, eq(partsConsumed.inventoryId, inventory.id))
+      .where(eq(partsConsumed.serviceRequestId, id));
+    
+    const parts = partsRaw.map(p => ({
+      id: p.id,
+      serviceRequestId: p.serviceRequestId,
+      inventoryId: p.inventoryId,
+      quantity: p.quantity,
+      recordedAt: p.recordedAt,
+      item: { name: p.itemName, price: p.itemPrice, sku: p.itemSku },
+    }));
     
     let assignedProfile: Profile | undefined;
     if (request.assignedToId) {

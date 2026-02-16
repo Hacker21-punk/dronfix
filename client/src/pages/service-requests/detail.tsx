@@ -138,7 +138,7 @@ export default function ServiceRequestDetail() {
 
           {/* Parts Consumed (Only visible if service started) */}
           {['in_progress', 'completed', 'billed'].includes(request.status) && (
-            <PartsConsumptionSection requestId={requestId} canEdit={role === 'engineer' && request.status === 'in_progress'} parts={request.parts} />
+            <PartsConsumptionSection requestId={requestId} canEdit={role === 'engineer' && request.status === 'in_progress'} parts={request.parts} role={role} />
           )}
 
           {/* Service Images */}
@@ -301,11 +301,12 @@ function AcceptRequestDialog({ requestId }: { requestId: number }) {
   );
 }
 
-function PartsConsumptionSection({ requestId, canEdit, parts }: { requestId: number, canEdit: boolean, parts: any[] }) {
+function PartsConsumptionSection({ requestId, canEdit, parts, role }: { requestId: number, canEdit: boolean, parts: any[], role?: string }) {
   const { data: inventory } = useInventory();
   const consumeMutation = useConsumePart();
   const [selectedPart, setSelectedPart] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const showPrice = role !== 'engineer';
 
   return (
     <Card>
@@ -319,7 +320,7 @@ function PartsConsumptionSection({ requestId, canEdit, parts }: { requestId: num
             <div className="flex-1">
               <Label>Select Part</Label>
               <Select value={selectedPart} onValueChange={setSelectedPart}>
-                <SelectTrigger><SelectValue placeholder="Search inventory..." /></SelectTrigger>
+                <SelectTrigger data-testid="select-part"><SelectValue placeholder="Search inventory..." /></SelectTrigger>
                 <SelectContent>
                   {inventory?.map(item => (
                     <SelectItem key={item.id} value={item.id.toString()}>
@@ -331,9 +332,9 @@ function PartsConsumptionSection({ requestId, canEdit, parts }: { requestId: num
             </div>
             <div className="w-24">
               <Label>Qty</Label>
-              <Input type="number" min="1" value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value))} />
+              <Input type="number" min="1" value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value))} data-testid="input-part-qty" />
             </div>
-            <Button onClick={() => {
+            <Button data-testid="button-add-part" onClick={() => {
               if (selectedPart) {
                 consumeMutation.mutate({ id: requestId, inventoryId: parseInt(selectedPart), quantity });
                 setSelectedPart("");
@@ -349,20 +350,20 @@ function PartsConsumptionSection({ requestId, canEdit, parts }: { requestId: num
               <tr>
                 <th className="p-3">Part Name</th>
                 <th className="p-3 text-right">Qty</th>
-                <th className="p-3 text-right">Unit Price</th>
-                <th className="p-3 text-right">Total</th>
+                {showPrice && <th className="p-3 text-right">Unit Price</th>}
+                {showPrice && <th className="p-3 text-right">Total</th>}
               </tr>
             </thead>
             <tbody className="divide-y">
               {parts && parts.length > 0 ? parts.map((part: any) => (
-                <tr key={part.id}>
+                <tr key={part.id} data-testid={`row-part-${part.id}`}>
                   <td className="p-3">{part.item?.name || 'Unknown Item'}</td>
                   <td className="p-3 text-right">{part.quantity}</td>
-                  <td className="p-3 text-right">{formatCurrency(Number(part.item?.price || 0))}</td>
-                  <td className="p-3 text-right font-medium">{formatCurrency(Number(part.item?.price || 0) * part.quantity)}</td>
+                  {showPrice && <td className="p-3 text-right">{formatCurrency(Number(part.item?.price || 0))}</td>}
+                  {showPrice && <td className="p-3 text-right font-medium">{formatCurrency(Number(part.item?.price || 0) * part.quantity)}</td>}
                 </tr>
               )) : (
-                <tr><td colSpan={4} className="p-4 text-center text-muted-foreground">No parts consumed yet</td></tr>
+                <tr><td colSpan={showPrice ? 4 : 2} className="p-4 text-center text-muted-foreground">No parts consumed yet</td></tr>
               )}
             </tbody>
           </table>
