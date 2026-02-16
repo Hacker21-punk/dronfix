@@ -1,5 +1,5 @@
 import { useServiceRequests, useCreateServiceRequest } from "@/hooks/use-service-requests";
-import { useCurrentUser } from "@/hooks/use-users";
+import { useCurrentUser, useUsers } from "@/hooks/use-users";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -183,6 +183,8 @@ export default function ServiceRequestsPage() {
 
 function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { mutate, isPending } = useCreateServiceRequest();
+  const { data: users } = useUsers();
+  const engineers = users?.filter(u => u.role === 'engineer') || [];
   const form = useForm({
     resolver: zodResolver(insertServiceRequestSchema),
     defaultValues: {
@@ -196,11 +198,16 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       complaint: "",
       partsRequested: "",
       serviceType: "L1" as const,
+      assignedToId: "",
     }
   });
 
   const onSubmit = (data: any) => {
-    mutate(data, {
+    const submitData = { ...data };
+    if (!submitData.assignedToId) {
+      delete submitData.assignedToId;
+    }
+    mutate(submitData, {
       onSuccess: () => {
         form.reset();
         onOpenChange(false);
@@ -278,6 +285,20 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           <div className="space-y-2">
             <Label>Requested Parts (Optional)</Label>
             <Input {...form.register("partsRequested")} placeholder="e.g. Propellers, Battery..." data-testid="input-parts" />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Assign Engineer</Label>
+            <Select onValueChange={(val) => form.setValue("assignedToId", val)} defaultValue="">
+              <SelectTrigger data-testid="select-assign-engineer">
+                <SelectValue placeholder="Select engineer to assign" />
+              </SelectTrigger>
+              <SelectContent>
+                {engineers.map(eng => (
+                  <SelectItem key={eng.userId} value={eng.userId!}>{eng.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex justify-end gap-2 pt-4">
