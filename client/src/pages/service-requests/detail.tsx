@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, CheckCircle, Upload, Wrench, Download, Camera, User, FileText, ArrowLeft, FolderOpen, Loader2
+  Calendar, CheckCircle, Upload, Wrench, Download, Camera, User, FileText, ArrowLeft, FolderOpen, Loader2, ZoomIn, X
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -450,72 +450,109 @@ function ImageUploadButtons({ type, requestId }: { type: 'before' | 'after', req
   );
 }
 
+function ImagePreviewCard({ img, label }: { img: any, label: string }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  return (
+    <>
+      <div className="space-y-1.5">
+        <div
+          className="relative group cursor-pointer rounded-md border overflow-visible"
+          onClick={() => setPreviewOpen(true)}
+          data-testid={`img-preview-${img.id}`}
+        >
+          <img
+            src={img.imageUrl}
+            className="h-40 w-full object-cover rounded-md"
+            alt={label}
+          />
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors rounded-md flex items-center justify-center">
+            <ZoomIn className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          asChild
+          data-testid={`button-download-image-${img.id}`}
+        >
+          <a href={img.imageUrl} target="_blank" rel="noopener noreferrer" download={`${label}-${img.id}.jpg`}>
+            <Download className="h-3.5 w-3.5 mr-1" /> Download
+          </a>
+        </Button>
+      </div>
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="sm:max-w-3xl p-0 overflow-hidden">
+          <DialogHeader className="p-4 pb-0">
+            <DialogTitle>{label}</DialogTitle>
+          </DialogHeader>
+          <div className="p-4 pt-2">
+            <img
+              src={img.imageUrl}
+              className="w-full max-h-[70vh] object-contain rounded-md"
+              alt={label}
+              data-testid={`img-fullsize-${img.id}`}
+            />
+          </div>
+          <div className="flex justify-end gap-2 p-4 pt-0">
+            <Button variant="outline" size="sm" asChild data-testid={`button-download-fullsize-${img.id}`}>
+              <a href={img.imageUrl} target="_blank" rel="noopener noreferrer" download={`${label}-${img.id}.jpg`}>
+                <Download className="h-4 w-4 mr-1" /> Download
+              </a>
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setPreviewOpen(false)} data-testid={`button-close-preview-${img.id}`}>
+              <X className="h-4 w-4 mr-1" /> Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function ServiceImagesSection({ requestId, canUpload, images }: { requestId: number, canUpload: boolean, images: any[] }) {
   const beforeImages = images?.filter(img => img.type === 'before') || [];
   const afterImages = images?.filter(img => img.type === 'after') || [];
-
-  const handleDownloadImage = (url: string, filename: string) => {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   return (
     <Card>
       <CardHeader><CardTitle>Service Images</CardTitle></CardHeader>
       <CardContent className="space-y-6">
         <div>
-          <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
+          <div className="flex flex-wrap justify-between items-center mb-3 gap-2">
             <h4 className="font-medium text-sm text-muted-foreground">Before Service ({beforeImages.length})</h4>
             {canUpload && <ImageUploadButtons type="before" requestId={requestId} />}
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {beforeImages.map(img => (
-              <div key={img.id} className="space-y-1">
-                <img src={img.imageUrl} className="h-24 w-full object-cover rounded-md border" alt="Before service" />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={(e) => { e.preventDefault(); handleDownloadImage(img.imageUrl, `before-${img.id}.jpg`); }}
-                  data-testid={`button-download-image-${img.id}`}
-                >
-                  <Download className="h-3.5 w-3.5 mr-1" /> Download
-                </Button>
-              </div>
+              <ImagePreviewCard key={img.id} img={img} label="Before Service" />
             ))}
-            {beforeImages.length === 0 && <div className="h-24 bg-muted rounded-md flex items-center justify-center text-xs text-muted-foreground">No images</div>}
+            {beforeImages.length === 0 && (
+              <div className="col-span-full h-32 bg-muted rounded-md flex items-center justify-center text-sm text-muted-foreground">
+                No images uploaded yet
+              </div>
+            )}
           </div>
         </div>
         
         <Separator />
 
         <div>
-          <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
+          <div className="flex flex-wrap justify-between items-center mb-3 gap-2">
             <h4 className="font-medium text-sm text-muted-foreground">After Service ({afterImages.length})</h4>
             {canUpload && <ImageUploadButtons type="after" requestId={requestId} />}
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {afterImages.map(img => (
-              <div key={img.id} className="space-y-1">
-                <img src={img.imageUrl} className="h-24 w-full object-cover rounded-md border" alt="After service" />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={(e) => { e.preventDefault(); handleDownloadImage(img.imageUrl, `after-${img.id}.jpg`); }}
-                  data-testid={`button-download-image-${img.id}`}
-                >
-                  <Download className="h-3.5 w-3.5 mr-1" /> Download
-                </Button>
-              </div>
+              <ImagePreviewCard key={img.id} img={img} label="After Service" />
             ))}
-            {afterImages.length === 0 && <div className="h-24 bg-muted rounded-md flex items-center justify-center text-xs text-muted-foreground">No images</div>}
+            {afterImages.length === 0 && (
+              <div className="col-span-full h-32 bg-muted rounded-md flex items-center justify-center text-sm text-muted-foreground">
+                No images uploaded yet
+              </div>
+            )}
           </div>
         </div>
       </CardContent>
