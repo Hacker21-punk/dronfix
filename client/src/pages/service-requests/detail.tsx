@@ -8,7 +8,6 @@ import {
 } from "@/hooks/use-service-requests";
 import { useInventory } from "@/hooks/use-inventory";
 import { useCurrentUser, useUsers } from "@/hooks/use-users";
-import { ObjectUploader } from "@/components/ObjectUploader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,8 +24,9 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useUpload } from "@/hooks/use-upload";
+import { CameraCapture } from "@/components/camera-capture";
 import { formatCurrency } from "@/lib/utils";
 
 export default function ServiceRequestDetail() {
@@ -387,18 +387,16 @@ function PartsConsumptionSection({ requestId, canEdit, parts, role }: { requestI
 function ImageUploadButtons({ type, requestId }: { type: 'before' | 'after', requestId: number }) {
   const uploadImageMutation = useUploadServiceImage();
   const { uploadFile, isUploading } = useUpload();
-  const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
-  const handleCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleCameraCapture = useCallback(async (file: File) => {
     const result = await uploadFile(file);
     if (result) {
       uploadImageMutation.mutate({ id: requestId, imageUrl: result.uploadURL, type });
     }
-    e.target.value = '';
-  };
+    setCameraOpen(false);
+  }, [uploadFile, uploadImageMutation, requestId, type]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -415,14 +413,6 @@ function ImageUploadButtons({ type, requestId }: { type: 'before' | 'after', req
   return (
     <div className="flex gap-1.5">
       <input
-        ref={cameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={handleCameraCapture}
-      />
-      <input
         ref={fileInputRef}
         type="file"
         accept="image/*,.pdf,.doc,.docx"
@@ -433,7 +423,7 @@ function ImageUploadButtons({ type, requestId }: { type: 'before' | 'after', req
       <Button
         variant="outline"
         size="sm"
-        onClick={() => cameraInputRef.current?.click()}
+        onClick={() => setCameraOpen(true)}
         disabled={isUploading}
         data-testid={`button-camera-${type}`}
       >
@@ -450,6 +440,12 @@ function ImageUploadButtons({ type, requestId }: { type: 'before' | 'after', req
         <FolderOpen className="h-3.5 w-3.5 mr-1" />
         Upload File
       </Button>
+      <CameraCapture
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={handleCameraCapture}
+        isUploading={isUploading}
+      />
     </div>
   );
 }
@@ -529,8 +525,8 @@ function ServiceImagesSection({ requestId, canUpload, images }: { requestId: num
 
 function DocumentUpload({ label, url, canUpload, onUpload }: { label: string, url: string | null, canUpload: boolean, onUpload: (url: string) => void }) {
   const { uploadFile, isUploading } = useUpload();
-  const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -541,6 +537,14 @@ function DocumentUpload({ label, url, canUpload, onUpload }: { label: string, ur
     }
     e.target.value = '';
   };
+
+  const handleCameraCapture = useCallback(async (file: File) => {
+    const result = await uploadFile(file);
+    if (result) {
+      onUpload(result.uploadURL);
+    }
+    setCameraOpen(false);
+  }, [uploadFile, onUpload]);
 
   return (
     <div className="flex flex-wrap items-center justify-between p-3 border rounded-lg bg-card/50 gap-2">
@@ -563,14 +567,6 @@ function DocumentUpload({ label, url, canUpload, onUpload }: { label: string, ur
         {!url && canUpload && (
           <>
             <input
-              ref={cameraInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={handleFile}
-            />
-            <input
               ref={fileInputRef}
               type="file"
               accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
@@ -580,7 +576,7 @@ function DocumentUpload({ label, url, canUpload, onUpload }: { label: string, ur
             <Button
               variant="outline"
               size="sm"
-              onClick={() => cameraInputRef.current?.click()}
+              onClick={() => setCameraOpen(true)}
               disabled={isUploading}
               data-testid={`button-camera-doc-${label.toLowerCase().replace(/\s+/g, '-')}`}
             >
@@ -597,6 +593,12 @@ function DocumentUpload({ label, url, canUpload, onUpload }: { label: string, ur
               <FolderOpen className="h-3.5 w-3.5 mr-1" />
               Upload
             </Button>
+            <CameraCapture
+              open={cameraOpen}
+              onClose={() => setCameraOpen(false)}
+              onCapture={handleCameraCapture}
+              isUploading={isUploading}
+            />
           </>
         )}
         {!url && !canUpload && (
