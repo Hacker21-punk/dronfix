@@ -375,37 +375,26 @@ function ServiceImagesSection({ requestId, canUpload, images }: { requestId: num
   const afterImages = images?.filter(img => img.type === 'after') || [];
 
   const handleUpload = (type: 'before' | 'after') => (result: any) => {
-    // Uppy result structure usually contains successful array
     if (result.successful && result.successful.length > 0) {
       result.successful.forEach((file: any) => {
-         // The uploadURL was used for upload, but we need the public/storage URL
-         // Assuming our backend returns uploadURL and we store that?
-         // Actually, the uploader hook returns { uploadURL } from getUploadParameters.
-         // But we need the download URL or path. 
-         // For simplicity with signed URLs, let's assume the uploadURL's base is what we need or we can reconstruct.
-         // Let's assume the file.uploadURL is what we got back.
-         // Ideally, the object uploader component should give us the final URL.
-         
-         // Fix: Our backend routes return objectPath in the request-url endpoint. 
-         // But Uppy handles the upload.
-         // Let's assume we can derive the URL or the Uploader component is configured to return it.
-         
-         // Simplified: We'll assume the URL is what we need. 
-         // In a real signed-url flow, we'd know the object key.
-         // Let's rely on the file.meta.objectPath if we injected it, or just use a placeholder logic.
-         // Since I can't easily modify the Uploader component now, I'll assume we pass the file.uploadURL.
-         
-         // IMPORTANT: The backend `request-url` route returns `objectPath`.
-         // I need to make sure Uppy captures this.
-         // For now, I'll rely on the `uploadURL` being accessible.
-         
          uploadImageMutation.mutate({ 
            id: requestId, 
-           imageUrl: file.uploadURL, // This is technically the PUT url, but let's assume it works for demo or needs fix
+           imageUrl: file.uploadURL,
            type 
          });
       });
     }
+  };
+
+  const handleDownloadImage = (url: string, filename: string) => {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -427,7 +416,18 @@ function ServiceImagesSection({ requestId, canUpload, images }: { requestId: num
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {beforeImages.map(img => (
-              <img key={img.id} src={img.imageUrl} className="h-24 w-full object-cover rounded-md border" />
+              <div key={img.id} className="space-y-1">
+                <img src={img.imageUrl} className="h-24 w-full object-cover rounded-md border" alt="Before service" />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={(e) => { e.preventDefault(); handleDownloadImage(img.imageUrl, `before-${img.id}.jpg`); }}
+                  data-testid={`button-download-image-${img.id}`}
+                >
+                  <Download className="h-3.5 w-3.5 mr-1" /> Download
+                </Button>
+              </div>
             ))}
             {beforeImages.length === 0 && <div className="h-24 bg-muted rounded-md flex items-center justify-center text-xs text-muted-foreground">No images</div>}
           </div>
@@ -450,7 +450,18 @@ function ServiceImagesSection({ requestId, canUpload, images }: { requestId: num
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {afterImages.map(img => (
-              <img key={img.id} src={img.imageUrl} className="h-24 w-full object-cover rounded-md border" />
+              <div key={img.id} className="space-y-1">
+                <img src={img.imageUrl} className="h-24 w-full object-cover rounded-md border" alt="After service" />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={(e) => { e.preventDefault(); handleDownloadImage(img.imageUrl, `after-${img.id}.jpg`); }}
+                  data-testid={`button-download-image-${img.id}`}
+                >
+                  <Download className="h-3.5 w-3.5 mr-1" /> Download
+                </Button>
+              </div>
             ))}
             {afterImages.length === 0 && <div className="h-24 bg-muted rounded-md flex items-center justify-center text-xs text-muted-foreground">No images</div>}
           </div>
@@ -467,30 +478,37 @@ function DocumentUpload({ label, url, canUpload, onUpload }: { label: string, ur
     <div className="flex items-center justify-between p-3 border rounded-lg bg-card/50">
       <div className="flex items-center gap-3">
         <FileText className="h-5 w-5 text-muted-foreground" />
-        <span className="font-medium text-sm">{label}</span>
+        <div>
+          <span className="font-medium text-sm">{label}</span>
+          {url && <p className="text-xs text-green-600 dark:text-green-400">Uploaded</p>}
+        </div>
       </div>
       
-      {url ? (
-        <Button variant="ghost" size="sm" asChild>
-          <a href={url} target="_blank" rel="noopener noreferrer">
-            <Download className="h-4 w-4 mr-2" /> View
-          </a>
-        </Button>
-      ) : canUpload ? (
-        <ObjectUploader 
-          onGetUploadParameters={getUploadParameters} 
-          onComplete={(res) => {
-            if (res.successful && res.successful[0]) {
-              onUpload(res.successful[0].uploadURL);
-            }
-          }}
-          buttonClassName="h-8 text-xs"
-        >
-          Upload
-        </ObjectUploader>
-      ) : (
-        <span className="text-xs text-muted-foreground">Pending</span>
-      )}
+      <div className="flex items-center gap-2">
+        {url && (
+          <Button variant="outline" size="sm" asChild data-testid={`button-download-${label.toLowerCase().replace(/\s+/g, '-')}`}>
+            <a href={url} target="_blank" rel="noopener noreferrer" download>
+              <Download className="h-4 w-4 mr-1" /> Download
+            </a>
+          </Button>
+        )}
+        {!url && canUpload && (
+          <ObjectUploader 
+            onGetUploadParameters={getUploadParameters} 
+            onComplete={(res) => {
+              if (res.successful && res.successful[0]) {
+                onUpload(res.successful[0].uploadURL);
+              }
+            }}
+            buttonClassName="h-8 text-xs"
+          >
+            Upload
+          </ObjectUploader>
+        )}
+        {!url && !canUpload && (
+          <span className="text-xs text-muted-foreground">Pending</span>
+        )}
+      </div>
     </div>
   );
 }
