@@ -73,7 +73,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
         <div className="bg-muted/50 rounded-xl p-4 border border-border/50">
           <div className="flex items-center gap-3 mb-3">
             <Avatar className="h-9 w-9 border-2 border-background shadow-sm">
-              <AvatarImage src={user?.profileImageUrl} />
+              <AvatarImage src={user?.profileImageUrl || undefined} />
               <AvatarFallback>{profile?.name?.[0] || 'U'}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">

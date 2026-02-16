@@ -21,10 +21,10 @@ export const serviceStatusEnum = pgEnum("service_status", ["pending", "accepted"
 // I will create a `profiles` table to extend user data.
 export const profiles = pgTable("profiles", {
   id: serial("id").primaryKey(),
-  userId: text("user_id").notNull().references(() => users.id), // Link to auth users
+  userId: text("user_id"), // Nullable until they log in and link account
   role: roleEnum("role").default("engineer").notNull(),
   name: text("name").notNull(),
-  email: text("email").notNull(),
+  email: text("email").notNull().unique(),
 });
 
 export const inventory = pgTable("inventory", {
@@ -146,6 +146,6 @@ export type PartConsumed = typeof partsConsumed.$inferSelect;
 export type CreateServiceRequest = z.infer<typeof insertServiceRequestSchema>;
 export type UpdateServiceRequest = Partial<CreateServiceRequest> & {
   status?: typeof serviceStatusEnum.enumValues[number];
-  tentativeServiceDate?: string | Date; // Allow string for JSON
+  tentativeServiceDate?: any; // Allow string or Date for flexibility
 };
 

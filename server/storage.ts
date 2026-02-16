@@ -2,8 +2,8 @@ import { db } from "./db";
 import { eq, sql, desc, and, lte } from "drizzle-orm";
 import {
   users, profiles, inventory, serviceRequests, serviceImages, partsConsumed,
-  type User, type InsertUser, type Profile, type InsertInventory, type Inventory,
-  type InsertServiceRequest, type ServiceRequest, type InsertPartsConsumedSchema,
+  type User, type UpsertUser, type Profile, type InsertInventory, type Inventory,
+  type InsertServiceRequest, type ServiceRequest, type insertPartsConsumedSchema,
   type ServiceImage, type PartConsumed, type UpdateServiceRequest
 } from "@shared/schema";
 

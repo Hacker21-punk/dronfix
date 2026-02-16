@@ -45,7 +45,7 @@ export async function registerRoutes(
     // Auto-link pending profiles by email
     if (!profile) {
       const pendingProfile = await storage.getProfileByEmail(req.user.claims.email);
-      if (pendingProfile && pendingProfile.userId.startsWith("pending:")) {
+      if (pendingProfile && !pendingProfile.userId) {
         profile = await storage.createProfile({
           id: pendingProfile.id,
           userId: req.user.claims.sub,
@@ -152,7 +152,7 @@ export async function registerRoutes(
   app.put(api.serviceRequests.update.path, async (req, res) => {
     const id = parseInt(req.params.id);
     const input = api.serviceRequests.update.input.parse(req.body);
-    const request = await storage.updateServiceRequest(id, input);
+    const request = await storage.updateServiceRequest(id, input as any);
     res.json(request);
   });
   
@@ -229,7 +229,7 @@ export async function registerRoutes(
       }
 
       const profile = await storage.createProfile({
-        userId: `pending:${email}`, // Placeholder until they log in
+        userId: null, // No user ID yet
         email,
         name,
         role

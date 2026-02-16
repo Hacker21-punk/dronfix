@@ -287,7 +287,7 @@ function AcceptRequestDialog({ requestId }: { requestId: number }) {
         <Button onClick={() => updateMutation.mutate({ 
           id: requestId, 
           status: 'accepted', 
-          tentativeServiceDate: new Date(date).toISOString() 
+          tentativeServiceDate: date ? new Date(date).toISOString() : undefined
         }, { onSuccess: () => setOpen(false) })}>
           Confirm Acceptance
         </Button>
