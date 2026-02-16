@@ -70,6 +70,23 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className="mt-auto p-6">
+        <div className="bg-muted/50 rounded-xl p-4 border border-border/50 mb-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Currency</span>
+            <select 
+              className="bg-transparent text-xs font-medium focus:outline-none cursor-pointer"
+              value={localStorage.getItem('app_currency') || 'INR'}
+              onChange={(e) => {
+                localStorage.setItem('app_currency', e.target.value);
+                window.location.reload();
+              }}
+            >
+              <option value="INR">₹ INR</option>
+              <option value="USD">$ USD</option>
+              <option value="EUR">€ EUR</option>
+            </select>
+          </div>
+        </div>
         <div className="bg-muted/50 rounded-xl p-4 border border-border/50">
           <div className="flex items-center gap-3 mb-3">
             <Avatar className="h-9 w-9 border-2 border-background shadow-sm">
