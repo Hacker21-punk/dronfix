@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, CheckCircle, Upload, Wrench, Download, Camera, User, FileText, ArrowLeft
+  Calendar, CheckCircle, Upload, Wrench, Download, Camera, User, FileText, ArrowLeft, FolderOpen, Loader2
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useUpload } from "@/hooks/use-upload";
 import { formatCurrency } from "@/lib/utils";
 
@@ -384,24 +384,79 @@ function PartsConsumptionSection({ requestId, canEdit, parts, role }: { requestI
   );
 }
 
-function ServiceImagesSection({ requestId, canUpload, images }: { requestId: number, canUpload: boolean, images: any[] }) {
+function ImageUploadButtons({ type, requestId }: { type: 'before' | 'after', requestId: number }) {
   const uploadImageMutation = useUploadServiceImage();
-  const { getUploadParameters } = useUpload();
-  
+  const { uploadFile, isUploading } = useUpload();
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const result = await uploadFile(file);
+    if (result) {
+      uploadImageMutation.mutate({ id: requestId, imageUrl: result.uploadURL, type });
+    }
+    e.target.value = '';
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    for (let i = 0; i < files.length; i++) {
+      const result = await uploadFile(files[i]);
+      if (result) {
+        uploadImageMutation.mutate({ id: requestId, imageUrl: result.uploadURL, type });
+      }
+    }
+    e.target.value = '';
+  };
+
+  return (
+    <div className="flex gap-1.5">
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleCameraCapture}
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,.pdf,.doc,.docx"
+        multiple
+        className="hidden"
+        onChange={handleFileSelect}
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => cameraInputRef.current?.click()}
+        disabled={isUploading}
+        data-testid={`button-camera-${type}`}
+      >
+        {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5 mr-1" />}
+        Camera
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={isUploading}
+        data-testid={`button-upload-file-${type}`}
+      >
+        <FolderOpen className="h-3.5 w-3.5 mr-1" />
+        Upload File
+      </Button>
+    </div>
+  );
+}
+
+function ServiceImagesSection({ requestId, canUpload, images }: { requestId: number, canUpload: boolean, images: any[] }) {
   const beforeImages = images?.filter(img => img.type === 'before') || [];
   const afterImages = images?.filter(img => img.type === 'after') || [];
-
-  const handleUpload = (type: 'before' | 'after') => (result: any) => {
-    if (result.successful && result.successful.length > 0) {
-      result.successful.forEach((file: any) => {
-         uploadImageMutation.mutate({ 
-           id: requestId, 
-           imageUrl: file.uploadURL,
-           type 
-         });
-      });
-    }
-  };
 
   const handleDownloadImage = (url: string, filename: string) => {
     const link = document.createElement('a');
@@ -419,17 +474,9 @@ function ServiceImagesSection({ requestId, canUpload, images }: { requestId: num
       <CardHeader><CardTitle>Service Images</CardTitle></CardHeader>
       <CardContent className="space-y-6">
         <div>
-          <div className="flex justify-between mb-2">
+          <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
             <h4 className="font-medium text-sm text-muted-foreground">Before Service ({beforeImages.length})</h4>
-            {canUpload && (
-               <ObjectUploader 
-                 onGetUploadParameters={getUploadParameters} 
-                 onComplete={handleUpload('before')}
-                 buttonClassName="h-6 text-xs px-2"
-               >
-                 <Upload className="h-3 w-3 mr-1" /> Add
-               </ObjectUploader>
-            )}
+            {canUpload && <ImageUploadButtons type="before" requestId={requestId} />}
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {beforeImages.map(img => (
@@ -453,17 +500,9 @@ function ServiceImagesSection({ requestId, canUpload, images }: { requestId: num
         <Separator />
 
         <div>
-          <div className="flex justify-between mb-2">
+          <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
             <h4 className="font-medium text-sm text-muted-foreground">After Service ({afterImages.length})</h4>
-            {canUpload && (
-               <ObjectUploader 
-                 onGetUploadParameters={getUploadParameters} 
-                 onComplete={handleUpload('after')}
-                 buttonClassName="h-6 text-xs px-2"
-               >
-                 <Upload className="h-3 w-3 mr-1" /> Add
-               </ObjectUploader>
-            )}
+            {canUpload && <ImageUploadButtons type="after" requestId={requestId} />}
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {afterImages.map(img => (
@@ -489,10 +528,22 @@ function ServiceImagesSection({ requestId, canUpload, images }: { requestId: num
 }
 
 function DocumentUpload({ label, url, canUpload, onUpload }: { label: string, url: string | null, canUpload: boolean, onUpload: (url: string) => void }) {
-  const { getUploadParameters } = useUpload();
-  
+  const { uploadFile, isUploading } = useUpload();
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const result = await uploadFile(file);
+    if (result) {
+      onUpload(result.uploadURL);
+    }
+    e.target.value = '';
+  };
+
   return (
-    <div className="flex items-center justify-between p-3 border rounded-lg bg-card/50">
+    <div className="flex flex-wrap items-center justify-between p-3 border rounded-lg bg-card/50 gap-2">
       <div className="flex items-center gap-3">
         <FileText className="h-5 w-5 text-muted-foreground" />
         <div>
@@ -501,7 +552,7 @@ function DocumentUpload({ label, url, canUpload, onUpload }: { label: string, ur
         </div>
       </div>
       
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         {url && (
           <Button variant="outline" size="sm" asChild data-testid={`button-download-${label.toLowerCase().replace(/\s+/g, '-')}`}>
             <a href={url} target="_blank" rel="noopener noreferrer" download>
@@ -510,17 +561,43 @@ function DocumentUpload({ label, url, canUpload, onUpload }: { label: string, ur
           </Button>
         )}
         {!url && canUpload && (
-          <ObjectUploader 
-            onGetUploadParameters={getUploadParameters} 
-            onComplete={(res) => {
-              if (res.successful && res.successful[0]) {
-                onUpload(res.successful[0].uploadURL);
-              }
-            }}
-            buttonClassName="h-8 text-xs"
-          >
-            Upload
-          </ObjectUploader>
+          <>
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handleFile}
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+              className="hidden"
+              onChange={handleFile}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => cameraInputRef.current?.click()}
+              disabled={isUploading}
+              data-testid={`button-camera-doc-${label.toLowerCase().replace(/\s+/g, '-')}`}
+            >
+              {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5 mr-1" />}
+              Camera
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              data-testid={`button-upload-doc-${label.toLowerCase().replace(/\s+/g, '-')}`}
+            >
+              <FolderOpen className="h-3.5 w-3.5 mr-1" />
+              Upload
+            </Button>
+          </>
         )}
         {!url && !canUpload && (
           <span className="text-xs text-muted-foreground">Pending</span>
