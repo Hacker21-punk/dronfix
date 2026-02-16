@@ -393,7 +393,7 @@ function ImageUploadButtons({ type, requestId }: { type: 'before' | 'after', req
   const handleCameraCapture = useCallback(async (file: File) => {
     const result = await uploadFile(file);
     if (result) {
-      uploadImageMutation.mutate({ id: requestId, imageUrl: result.uploadURL, type });
+      uploadImageMutation.mutate({ id: requestId, imageUrl: result.objectPath, type });
     }
     setCameraOpen(false);
   }, [uploadFile, uploadImageMutation, requestId, type]);
@@ -404,7 +404,7 @@ function ImageUploadButtons({ type, requestId }: { type: 'before' | 'after', req
     for (let i = 0; i < files.length; i++) {
       const result = await uploadFile(files[i]);
       if (result) {
-        uploadImageMutation.mutate({ id: requestId, imageUrl: result.uploadURL, type });
+        uploadImageMutation.mutate({ id: requestId, imageUrl: result.objectPath, type });
       }
     }
     e.target.value = '';
@@ -560,17 +560,24 @@ function ServiceImagesSection({ requestId, canUpload, images }: { requestId: num
   );
 }
 
+function getFileTypeFromUrl(url: string): 'pdf' | 'image' {
+  const cleanUrl = url.split('?')[0].toLowerCase();
+  if (cleanUrl.endsWith('.pdf')) return 'pdf';
+  return 'image';
+}
+
 function DocumentUpload({ label, url, canUpload, onUpload }: { label: string, url: string | null, canUpload: boolean, onUpload: (url: string) => void }) {
   const { uploadFile, isUploading } = useUpload();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const result = await uploadFile(file);
     if (result) {
-      onUpload(result.uploadURL);
+      onUpload(result.objectPath);
     }
     e.target.value = '';
   };
@@ -578,70 +585,145 @@ function DocumentUpload({ label, url, canUpload, onUpload }: { label: string, ur
   const handleCameraCapture = useCallback(async (file: File) => {
     const result = await uploadFile(file);
     if (result) {
-      onUpload(result.uploadURL);
+      onUpload(result.objectPath);
     }
     setCameraOpen(false);
   }, [uploadFile, onUpload]);
 
+  const testId = label.toLowerCase().replace(/\s+/g, '-');
+
   return (
-    <div className="flex flex-wrap items-center justify-between p-3 border rounded-lg bg-card/50 gap-2">
-      <div className="flex items-center gap-3">
-        <FileText className="h-5 w-5 text-muted-foreground" />
-        <div>
-          <span className="font-medium text-sm">{label}</span>
-          {url && <p className="text-xs text-green-600 dark:text-green-400">Uploaded</p>}
+    <div className="border rounded-lg bg-card/50 overflow-visible">
+      <div className="flex flex-wrap items-center justify-between p-3 gap-2">
+        <div className="flex items-center gap-3">
+          <FileText className="h-5 w-5 text-muted-foreground" />
+          <div>
+            <span className="font-medium text-sm">{label}</span>
+            {url && <p className="text-xs text-green-600 dark:text-green-400">Uploaded</p>}
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-1.5">
+          {url && (
+            <Button variant="outline" size="sm" asChild data-testid={`button-download-${testId}`}>
+              <a href={url} target="_blank" rel="noopener noreferrer" download>
+                <Download className="h-4 w-4 mr-1" /> Download
+              </a>
+            </Button>
+          )}
+          {!url && canUpload && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                className="hidden"
+                onChange={handleFile}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCameraOpen(true)}
+                disabled={isUploading}
+                data-testid={`button-camera-doc-${testId}`}
+              >
+                {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5 mr-1" />}
+                Camera
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                data-testid={`button-upload-doc-${testId}`}
+              >
+                <FolderOpen className="h-3.5 w-3.5 mr-1" />
+                Upload
+              </Button>
+              <CameraCapture
+                open={cameraOpen}
+                onClose={() => setCameraOpen(false)}
+                onCapture={handleCameraCapture}
+                isUploading={isUploading}
+              />
+            </>
+          )}
+          {!url && !canUpload && (
+            <span className="text-xs text-muted-foreground">Pending</span>
+          )}
         </div>
       </div>
-      
-      <div className="flex items-center gap-1.5">
-        {url && (
-          <Button variant="outline" size="sm" asChild data-testid={`button-download-${label.toLowerCase().replace(/\s+/g, '-')}`}>
-            <a href={url} target="_blank" rel="noopener noreferrer" download>
-              <Download className="h-4 w-4 mr-1" /> Download
-            </a>
-          </Button>
-        )}
-        {!url && canUpload && (
-          <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
-              className="hidden"
-              onChange={handleFile}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCameraOpen(true)}
-              disabled={isUploading}
-              data-testid={`button-camera-doc-${label.toLowerCase().replace(/\s+/g, '-')}`}
+
+      {url && (
+        <div className="px-3 pb-3">
+          {getFileTypeFromUrl(url) === 'pdf' ? (
+            <div
+              className="border rounded-md overflow-hidden cursor-pointer"
+              onClick={() => setPreviewOpen(true)}
+              data-testid={`doc-preview-${testId}`}
             >
-              {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5 mr-1" />}
-              Camera
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-              data-testid={`button-upload-doc-${label.toLowerCase().replace(/\s+/g, '-')}`}
+              <iframe
+                src={url}
+                className="w-full h-48 pointer-events-none"
+                title={`${label} preview`}
+              />
+              <div className="flex items-center justify-center gap-1 py-1.5 bg-muted/50 text-xs text-muted-foreground">
+                <ZoomIn className="h-3.5 w-3.5" /> Click to view full document
+              </div>
+            </div>
+          ) : (
+            <div
+              className="relative group cursor-pointer rounded-md border overflow-visible"
+              onClick={() => setPreviewOpen(true)}
+              data-testid={`doc-preview-${testId}`}
             >
-              <FolderOpen className="h-3.5 w-3.5 mr-1" />
-              Upload
-            </Button>
-            <CameraCapture
-              open={cameraOpen}
-              onClose={() => setCameraOpen(false)}
-              onCapture={handleCameraCapture}
-              isUploading={isUploading}
-            />
-          </>
-        )}
-        {!url && !canUpload && (
-          <span className="text-xs text-muted-foreground">Pending</span>
-        )}
-      </div>
+              <img
+                src={url}
+                className="w-full max-h-48 object-contain rounded-md bg-muted/30"
+                alt={`${label} preview`}
+              />
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors rounded-md flex items-center justify-center">
+                <ZoomIn className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            </div>
+          )}
+
+          <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+            <DialogContent className="sm:max-w-3xl p-0 overflow-hidden">
+              <DialogHeader className="p-4 pb-0">
+                <DialogTitle>{label}</DialogTitle>
+              </DialogHeader>
+              <div className="p-4 pt-2">
+                {getFileTypeFromUrl(url) === 'pdf' ? (
+                  <iframe
+                    src={url}
+                    className="w-full h-[70vh] rounded-md border"
+                    title={`${label} full view`}
+                    data-testid={`doc-fullsize-${testId}`}
+                  />
+                ) : (
+                  <img
+                    src={url}
+                    className="w-full max-h-[70vh] object-contain rounded-md"
+                    alt={label}
+                    data-testid={`doc-fullsize-${testId}`}
+                  />
+                )}
+              </div>
+              <div className="flex justify-end gap-2 p-4 pt-0">
+                <Button variant="outline" size="sm" asChild>
+                  <a href={url} target="_blank" rel="noopener noreferrer" download>
+                    <Download className="h-4 w-4 mr-1" /> Download
+                  </a>
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setPreviewOpen(false)}>
+                  <X className="h-4 w-4 mr-1" /> Close
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+      )}
     </div>
   );
 }
