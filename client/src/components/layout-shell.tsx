@@ -18,6 +18,7 @@ import { Button } from "./ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 import { Separator } from "./ui/separator";
+import hanronLogo from "@assets/hanron_logo_1771243986590.png";
 
 export function LayoutShell({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -39,13 +40,11 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
     <div className="flex flex-col h-full">
       <div className="p-6">
         <div className="flex items-center gap-3 mb-8">
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-primary to-accent flex items-center justify-center text-white shadow-lg shadow-primary/20">
-            <Wrench className="h-6 w-6" />
-          </div>
-          <div>
-            <h1 className="font-display font-bold text-xl tracking-tight text-foreground">DroneFix</h1>
-            <p className="text-xs text-muted-foreground font-medium">Service Centre OS</p>
-          </div>
+          <img src={hanronLogo} alt="Hanron" className="h-8 w-auto dark:brightness-0 dark:invert" data-testid="img-hanron-logo" />
+        </div>
+        <div className="mb-6">
+          <h1 className="font-display font-bold text-xl tracking-tight text-foreground" data-testid="text-app-title">DroneFix</h1>
+          <p className="text-xs text-muted-foreground font-medium">by Hanron</p>
         </div>
 
         <nav className="space-y-1">
@@ -119,10 +118,11 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
       {/* Mobile Header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border p-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-           <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center text-white">
-            <Wrench className="h-5 w-5" />
+          <img src={hanronLogo} alt="Hanron" className="h-6 w-auto dark:brightness-0 dark:invert" />
+          <div>
+            <span className="font-display font-bold text-lg leading-none">DroneFix</span>
+            <p className="text-[10px] text-muted-foreground leading-none">by Hanron</p>
           </div>
-          <span className="font-display font-bold text-lg">DroneFix</span>
         </div>
         <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
           <SheetTrigger asChild>
