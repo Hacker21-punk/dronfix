@@ -1,6 +1,6 @@
 import { useDashboardStats } from "@/hooks/use-service-requests";
 import { StatCard } from "@/components/stat-card";
-import { Package, AlertTriangle, CheckCircle2, Clock, Wrench, Users, FileText } from "lucide-react";
+import { Package, AlertTriangle, CheckCircle2, Clock, Wrench, Users, FileText, Timer } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { useCurrentUser } from "@/hooks/use-users";
 import { formatCurrency } from "@/lib/utils";
@@ -69,6 +69,31 @@ export default function Dashboard() {
           />
         )}
       </div>
+
+      <Card className="border-border/60 shadow-sm">
+        <CardHeader>
+          <CardTitle>Average Aging of Open Cases (Days)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="flex flex-col items-center p-4 bg-muted/30 rounded-lg" data-testid="stat-aging-l1">
+              <Timer className="h-6 w-6 text-muted-foreground mb-2" />
+              <p className="text-2xl font-bold" data-testid="text-aging-l1-value">{stats?.avgAgingL1 ?? 0}</p>
+              <p className="text-sm text-muted-foreground mt-1">L1 Service</p>
+            </div>
+            <div className="flex flex-col items-center p-4 bg-muted/30 rounded-lg" data-testid="stat-aging-l2">
+              <Timer className="h-6 w-6 text-muted-foreground mb-2" />
+              <p className="text-2xl font-bold" data-testid="text-aging-l2-value">{stats?.avgAgingL2 ?? 0}</p>
+              <p className="text-sm text-muted-foreground mt-1">L2 Service</p>
+            </div>
+            <div className="flex flex-col items-center p-4 bg-muted/30 rounded-lg" data-testid="stat-aging-l3">
+              <Timer className="h-6 w-6 text-muted-foreground mb-2" />
+              <p className="text-2xl font-bold" data-testid="text-aging-l3-value">{stats?.avgAgingL3 ?? 0}</p>
+              <p className="text-sm text-muted-foreground mt-1">L3 Service</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {isAdmin && (

@@ -217,11 +217,27 @@ export class DatabaseStorage implements IStorage {
     const pendingRequests = allRequests.filter(r => r.status === "pending" || r.status === "accepted" || r.status === "in_progress").length;
     const completedRequests = allRequests.filter(r => r.status === "completed" || r.status === "billed").length;
     
+    const now = new Date();
+    const openRequests = allRequests.filter(r => r.status === "pending" || r.status === "accepted" || r.status === "in_progress");
+
+    const avgAging = (type: string) => {
+      const filtered = openRequests.filter(r => r.serviceType === type);
+      if (filtered.length === 0) return 0;
+      const totalDays = filtered.reduce((sum, r) => {
+        const created = r.createdAt ? new Date(r.createdAt) : now;
+        return sum + Math.max(0, Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)));
+      }, 0);
+      return Math.round((totalDays / filtered.length) * 10) / 10;
+    };
+
     return {
       totalStockValue,
       lowStockItems,
       pendingRequests,
-      completedRequests
+      completedRequests,
+      avgAgingL1: avgAging("L1"),
+      avgAgingL2: avgAging("L2"),
+      avgAgingL3: avgAging("L3"),
     };
   }
 }
