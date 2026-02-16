@@ -10,14 +10,14 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter 
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, Trash2, Edit, AlertCircle, FileUp, ExternalLink } from "lucide-react";
+import { Search, Plus, Trash2, Edit, AlertCircle, FileUp, Download } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { insertInventorySchema, type Inventory } from "@shared/schema";
 import { formatCurrency } from "@/lib/utils";
-import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
 
 export default function InventoryPage() {
   const { data: inventory, isLoading } = useInventory();
@@ -26,48 +26,43 @@ export default function InventoryPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Inventory | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const createMutation = useCreateInventoryItem();
+  const [isUploading, setIsUploading] = useState(false);
   const { toast } = useToast();
 
-  const handleExcelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws);
-        
-        data.forEach((row: any) => {
-          if (row.name && row.sku && row.price) {
-            createMutation.mutate({
-              name: String(row.name),
-              sku: String(row.sku),
-              quantity: Number(row.quantity || 0),
-              criticalLevel: Number(row.criticalLevel || 5),
-              price: String(row.price),
-              description: row.description ? String(row.description) : undefined
-            });
-          }
-        });
-        
-        toast({
-          title: "Import Started",
-          description: `Processing ${data.length} items from Excel.`,
-        });
-      } catch (err) {
-        toast({
-          title: "Import Failed",
-          description: "Could not parse Excel file.",
-          variant: "destructive"
-        });
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/inventory/bulk-upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        toast({ title: "Upload Failed", description: result.message, variant: "destructive" });
+        return;
       }
-    };
-    reader.readAsBinaryString(file);
+
+      toast({
+        title: "Import Complete",
+        description: `${result.success} items added successfully.${result.failed > 0 ? ` ${result.failed} failed.` : ""}`,
+        variant: result.failed > 0 ? "destructive" : "default",
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
+    } catch (err) {
+      toast({ title: "Upload Failed", description: "Could not upload file.", variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const filteredInventory = inventory?.filter(item => 
@@ -88,14 +83,9 @@ export default function InventoryPage() {
         
         {canEdit && (
           <div className="flex flex-wrap gap-2">
-            <a 
-              href="https://docs.google.com/spreadsheets/d/1vC3z9pE7kO7tWn7Q5n5v_XlK4n4h-G6z6qX_3fW7zQ8/edit?usp=sharing" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="inline-flex items-center"
-            >
+            <a href="/api/inventory/template" download data-testid="link-download-template">
               <Button variant="outline" size="sm" className="h-9">
-                <ExternalLink className="h-4 w-4 mr-2" />
+                <Download className="h-4 w-4 mr-2" />
                 Template
               </Button>
             </a>
@@ -103,14 +93,22 @@ export default function InventoryPage() {
               type="file" 
               ref={fileInputRef} 
               className="hidden" 
-              accept=".xlsx, .xls" 
+              accept=".xlsx,.xls" 
               onChange={handleExcelUpload}
+              data-testid="input-excel-upload"
             />
-            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="h-9">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => fileInputRef.current?.click()} 
+              className="h-9"
+              disabled={isUploading}
+              data-testid="button-upload-excel"
+            >
               <FileUp className="h-4 w-4 mr-2" />
-              Upload Excel
+              {isUploading ? "Uploading..." : "Upload Excel"}
             </Button>
-            <Button size="sm" onClick={() => setIsCreateOpen(true)} className="h-9 shadow-lg shadow-primary/20">
+            <Button size="sm" onClick={() => setIsCreateOpen(true)} className="h-9 shadow-lg shadow-primary/20" data-testid="button-add-item">
               <Plus className="h-4 w-4 mr-2" />
               Add Item
             </Button>
