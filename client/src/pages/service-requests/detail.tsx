@@ -133,6 +133,17 @@ export default function ServiceRequestDetail() {
                   "{request.complaint}"
                 </div>
               </div>
+              {request.partsRequested && (
+                <>
+                  <Separator />
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2" data-testid="text-parts-requested-label">Parts Requested</h4>
+                    <div className="p-4 bg-muted/40 rounded-lg" data-testid="text-parts-requested">
+                      {request.partsRequested}
+                    </div>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
