@@ -3,7 +3,7 @@ import { useCurrentUser } from "@/hooks/use-users";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Calendar, User, Plane, FolderOpen, FolderClosed } from "lucide-react";
+import { Plus, Search, Clock, User, MapPin, FolderOpen, FolderClosed } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { Link } from "wouter";
@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertServiceRequestSchema } from "@shared/schema";
-import { format } from "date-fns";
+import { format, differenceInDays } from "date-fns";
 
 const OPEN_STATUSES = ["pending", "accepted", "in_progress"];
 const CLOSED_STATUSES = ["completed", "billed"];
@@ -40,14 +40,14 @@ export default function ServiceRequestsPage() {
 
   const displayedRequests = activeTab === "open" ? openRequests : closedRequests;
 
-  const getStatusColor = (status: string) => {
+  const getStatusVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
-      case 'accepted': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
-      case 'in_progress': return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400';
-      case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
-      case 'billed': return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'pending': return 'outline';
+      case 'accepted': return 'secondary';
+      case 'in_progress': return 'default';
+      case 'completed': return 'default';
+      case 'billed': return 'secondary';
+      default: return 'outline';
     }
   };
 
@@ -115,49 +115,58 @@ export default function ServiceRequestsPage() {
             {activeTab === "open" ? "No open service requests" : "No closed service requests"}
           </div>
         ) : (
-          displayedRequests.map((req) => (
-            <Link key={req.id} href={`/requests/${req.id}`}>
-              <Card className="h-full hover:shadow-xl hover:border-primary/50 transition-all duration-300 cursor-pointer group" data-testid={`card-request-${req.id}`}>
-                <CardContent className="p-6 flex flex-col h-full">
-                  <div className="flex justify-between items-start mb-4">
-                    <Badge variant="outline" className="font-mono text-xs">
-                      #{req.id.toString().padStart(4, '0')}
-                    </Badge>
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${getStatusColor(req.status)}`} data-testid={`text-status-${req.id}`}>
-                      {req.status.replace('_', ' ')}
-                    </span>
-                  </div>
+          displayedRequests.map((req) => {
+            const agingDays = req.createdAt ? differenceInDays(new Date(), new Date(req.createdAt)) : 0;
+            const agingLabel = agingDays === 0 ? 'Today' : agingDays === 1 ? '1 day' : `${agingDays} days`;
 
-                  <div className="space-y-4 flex-1">
-                    <div>
-                      <h3 className="font-display font-bold text-lg group-hover:text-primary transition-colors">
-                        {req.droneNo} <span className="text-muted-foreground font-normal text-sm">({req.serviceType})</span>
-                      </h3>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                        <User className="h-3 w-3" />
-                        {req.pilotName}
-                      </div>
+            return (
+              <Link key={req.id} href={`/requests/${req.id}`}>
+                <Card className="h-full hover-elevate cursor-pointer" data-testid={`card-request-${req.id}`}>
+                  <CardContent className="p-6 flex flex-col h-full">
+                    <div className="flex justify-between items-start mb-4 gap-2">
+                      <Badge variant="outline" className="font-mono text-xs no-default-hover-elevate no-default-active-elevate">
+                        #{req.id.toString().padStart(4, '0')}
+                      </Badge>
+                      <Badge variant={getStatusVariant(req.status)} className="text-xs uppercase tracking-wider no-default-hover-elevate no-default-active-elevate" data-testid={`text-status-${req.id}`}>
+                        {req.status.replace('_', ' ')}
+                      </Badge>
                     </div>
 
-                    <div className="p-3 bg-muted/40 rounded-lg text-sm line-clamp-2 text-muted-foreground italic">
-                      "{req.complaint}"
-                    </div>
+                    <div className="space-y-3 flex-1">
+                      <div className="flex items-start gap-2">
+                        <User className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <div>
+                          <p className="font-semibold" data-testid={`text-pilot-${req.id}`}>{req.pilotName}</p>
+                          <p className="text-sm text-muted-foreground font-mono" data-testid={`text-drone-serial-${req.id}`}>
+                            {req.droneSerial || req.droneNo}
+                          </p>
+                        </div>
+                      </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground mt-auto">
-                      <div className="flex items-center gap-1.5">
-                        <Calendar className="h-3 w-3" />
-                        {req.tentativeServiceDate ? format(new Date(req.tentativeServiceDate), 'MMM d, yyyy') : 'Date pending'}
-                      </div>
-                      <div className="flex items-center gap-1.5 justify-end">
-                        <Plane className="h-3 w-3" />
-                        {req.assignedTo?.name ? req.assignedTo.name : 'Unassigned'}
+                      {(req.state || req.district) && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <MapPin className="h-3.5 w-3.5 shrink-0" />
+                          <span data-testid={`text-location-${req.id}`}>
+                            {[req.district, req.state].filter(Boolean).join(', ')}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/50 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="h-3 w-3" />
+                          <span data-testid={`text-aging-${req.id}`}>Aging: {agingLabel}</span>
+                        </div>
+                        <Badge variant="secondary" className="text-xs no-default-hover-elevate no-default-active-elevate">
+                          {req.serviceType}
+                        </Badge>
                       </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))
+                  </CardContent>
+                </Card>
+              </Link>
+            );
+          })
         )}
       </div>
 
@@ -175,6 +184,8 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       droneNo: "",
       droneSerial: "",
       pilotAddress: "",
+      state: "",
+      district: "",
       contactDetails: "",
       complaint: "",
       partsRequested: "",
@@ -214,6 +225,17 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           <div className="space-y-2">
             <Label>Address</Label>
             <Input {...form.register("pilotAddress")} data-testid="input-address" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>State</Label>
+              <Input {...form.register("state")} placeholder="e.g. Madhya Pradesh" data-testid="input-state" />
+            </div>
+            <div className="space-y-2">
+              <Label>District</Label>
+              <Input {...form.register("district")} placeholder="e.g. Bhopal" data-testid="input-district" />
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-4">

@@ -44,6 +44,8 @@ export const serviceRequests = pgTable("service_requests", {
   droneNo: text("drone_no").notNull(),
   droneSerial: text("drone_serial").notNull(),
   pilotAddress: text("pilot_address").notNull(),
+  state: text("state"),
+  district: text("district"),
   contactDetails: text("contact_details").notNull(),
   complaint: text("complaint").notNull(),
   partsRequested: text("parts_requested"), // Initial request

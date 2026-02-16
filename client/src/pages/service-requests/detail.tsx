@@ -114,6 +114,11 @@ export default function ServiceRequestDetail() {
                    <p className="font-medium text-lg">{request.pilotName}</p>
                    <p className="text-sm">{request.contactDetails}</p>
                    <p className="text-sm text-muted-foreground">{request.pilotAddress}</p>
+                   {(request.state || request.district) && (
+                     <p className="text-sm text-muted-foreground">
+                       {[request.district, request.state].filter(Boolean).join(', ')}
+                     </p>
+                   )}
                 </div>
                 <div>
                    <h4 className="text-sm font-medium text-muted-foreground mb-1">Drone Details</h4>
