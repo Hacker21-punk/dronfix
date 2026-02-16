@@ -53,6 +53,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createProfile(profileData: any): Promise<Profile> {
+    if (profileData.id) {
+      const [updated] = await db.update(profiles)
+        .set(profileData)
+        .where(eq(profiles.id, profileData.id))
+        .returning();
+      return updated;
+    }
     const [profile] = await db.insert(profiles).values(profileData).returning();
     return profile;
   }

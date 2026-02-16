@@ -42,6 +42,18 @@ export async function registerRoutes(
     const userId = req.user.claims.sub;
     let profile = await storage.getProfile(userId);
     
+    // Auto-link pending profiles by email
+    if (!profile) {
+      const pendingProfile = await storage.getProfileByEmail(req.user.claims.email);
+      if (pendingProfile && pendingProfile.userId.startsWith("pending:")) {
+        profile = await storage.createProfile({
+          id: pendingProfile.id,
+          userId: req.user.claims.sub,
+          name: `${req.user.claims.first_name || ''} ${req.user.claims.last_name || ''}`.trim() || req.user.claims.email || 'User',
+        });
+      }
+    }
+    
     // Auto-create profile if first login (optional, or manual)
     // For now, if no profile, we create one with role 'engineer' by default or 'admin' if first user
     if (!profile) {
@@ -186,24 +198,49 @@ export async function registerRoutes(
   });
 
   // === Users ===
-  app.get(api.users.list.path, async (req, res) => {
+  app.get(api.users.list.path, requireRole("admin"), async (req, res) => {
     const profiles = await storage.getAllProfiles();
     res.json(profiles);
   });
-  
+
+  app.patch("/api/users/:id/role", requireRole("admin"), async (req, res) => {
+    try {
+      const { role } = z.object({ role: z.enum(["admin", "engineer", "account"]) }).parse(req.body);
+      const profile = await storage.createProfile({
+        id: parseInt(req.params.id),
+        role
+      });
+      res.json(profile);
+    } catch (err) {
+      res.status(400).json({ message: "Invalid role" });
+    }
+  });
+
   app.post(api.users.create.path, requireRole("admin"), async (req, res) => {
-    // Only Admin can create users (assign roles)
-    // Here we can pre-create a profile for an email.
-    // When that user logs in with Replit Auth, they will match this profile if we implemented that logic.
-    // Currently, `getProfile` uses `userId`.
-    // Replit Auth gives `sub` (userId) which we don't know until they login.
-    // So "Create User" in this context might effectively mean "Invite" or "Set Role for existing user".
-    // For simplicity, let's assume we just store the profile and link it later?
-    // Or, we assume the Admin just creates a placeholder profile?
-    // Actually, Replit Auth ID is stable. 
-    // Let's skip user creation logic for now and assume users self-register (first login) and Admin edits their role.
-    // So let's add an update role endpoint instead.
-    res.status(501).json({ message: "User creation not implemented. Users must login first, then Admin can assign roles." });
+    try {
+      const { email, name, role } = api.users.create.input.parse(req.body);
+      
+      // Since we use Replit Auth, we can't "create" a user account, 
+      // but we can pre-assign a role to an email address.
+      // We'll update our storage to support finding/creating profiles by email.
+      const existing = await storage.getProfileByEmail(email);
+      if (existing) {
+        return res.status(400).json({ message: "User with this email already exists" });
+      }
+
+      const profile = await storage.createProfile({
+        userId: `pending:${email}`, // Placeholder until they log in
+        email,
+        name,
+        role
+      });
+      res.status(201).json(profile);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Error creating user" });
+    }
   });
 
   // === Reports (PDF) ===
