@@ -33,18 +33,22 @@ export default function InventoryPage() {
   );
 
   const role = profile?.role;
-  const canEdit = role === 'admin' || role === 'engineer';
+  const isAdmin = role === 'admin';
+  const canManage = isAdmin;
+  const canUpdateStock = role === 'admin' || role === 'engineer';
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold">Inventory</h1>
-          <p className="text-muted-foreground mt-1">Manage spare parts and critical stock levels</p>
+          <p className="text-muted-foreground mt-1">
+            {isAdmin ? "Manage spare parts and critical stock levels" : "View spare parts and update stock levels"}
+          </p>
         </div>
         
-        {canEdit && (
-          <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2">
+          {canUpdateStock && (
             <Button 
               variant="outline" 
               size="sm" 
@@ -55,12 +59,14 @@ export default function InventoryPage() {
               <PackageOpen className="h-4 w-4 mr-2" />
               Bulk Edit Stock
             </Button>
+          )}
+          {canManage && (
             <Button size="sm" onClick={() => setIsCreateOpen(true)} className="h-9 shadow-lg shadow-primary/20" data-testid="button-add-item">
               <Plus className="h-4 w-4 mr-2" />
               Add Item
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl border border-border shadow-sm">
@@ -82,7 +88,7 @@ export default function InventoryPage() {
               <TableHead className="text-right">Price</TableHead>
               <TableHead className="text-right">Quantity</TableHead>
               <TableHead className="text-right">Status</TableHead>
-              {canEdit && <TableHead className="text-right">Actions</TableHead>}
+              {canManage && <TableHead className="text-right">Actions</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -116,7 +122,7 @@ export default function InventoryPage() {
                       </span>
                     )}
                   </TableCell>
-                  {canEdit && (
+                  {canManage && (
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Button 

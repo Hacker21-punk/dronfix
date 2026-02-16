@@ -226,8 +226,16 @@ export async function registerRoutes(
   });
 
   // === Dashboard ===
-  app.get(api.reports.dashboard.path, async (req, res) => {
-    const stats = await storage.getDashboardStats();
+  app.get(api.reports.dashboard.path, async (req: any, res) => {
+    let engineerId: string | undefined;
+    if (req.user) {
+      const userId = req.user.claims.sub;
+      const profile = await storage.getProfile(userId);
+      if (profile && profile.role === 'engineer') {
+        engineerId = userId;
+      }
+    }
+    const stats = await storage.getDashboardStats(engineerId);
     res.json(stats);
   });
 

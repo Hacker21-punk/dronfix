@@ -37,7 +37,7 @@ export interface IStorage {
   getPartsConsumed(requestId: number): Promise<PartConsumed[]>;
   
   // Dashboard
-  getDashboardStats(): Promise<any>;
+  getDashboardStats(engineerId?: string): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -204,21 +204,21 @@ export class DatabaseStorage implements IStorage {
   }
   
   // Dashboard
-  async getDashboardStats(): Promise<any> {
-    // Total Stock Value
+  async getDashboardStats(engineerId?: string): Promise<any> {
     const allInventory = await this.getAllInventory();
     const totalStockValue = allInventory.reduce((acc, item) => acc + (Number(item.price) * item.quantity), 0);
-    
-    // Low Stock Items
     const lowStockItems = allInventory.filter(item => item.quantity <= item.criticalLevel);
     
-    // Requests stats
     const allRequests = await db.select().from(serviceRequests);
-    const pendingRequests = allRequests.filter(r => r.status === "pending" || r.status === "accepted" || r.status === "in_progress").length;
-    const completedRequests = allRequests.filter(r => r.status === "completed" || r.status === "billed").length;
+    const relevantRequests = engineerId
+      ? allRequests.filter(r => r.assignedToId === engineerId)
+      : allRequests;
+
+    const pendingRequests = relevantRequests.filter(r => r.status === "pending" || r.status === "accepted" || r.status === "in_progress").length;
+    const completedRequests = relevantRequests.filter(r => r.status === "completed" || r.status === "billed").length;
     
     const now = new Date();
-    const openRequests = allRequests.filter(r => r.status === "pending" || r.status === "accepted" || r.status === "in_progress");
+    const openRequests = relevantRequests.filter(r => r.status === "pending" || r.status === "accepted" || r.status === "in_progress");
 
     const avgAging = (type: string) => {
       const filtered = openRequests.filter(r => r.serviceType === type);

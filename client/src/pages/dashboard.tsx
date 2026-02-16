@@ -40,7 +40,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {(!isAccount) && (
+        {isAdmin && (
           <StatCard 
             title="Total Stock Value" 
             value={formatCurrency(Number(stats?.totalStockValue || 0))} 
@@ -49,13 +49,13 @@ export default function Dashboard() {
           />
         )}
         <StatCard 
-          title="Pending Requests" 
+          title={isEngineer ? "My Active Jobs" : "Pending Requests"}
           value={stats?.pendingRequests || 0} 
           icon={Clock}
           className="bg-gradient-to-br from-background to-orange-50/50 dark:to-orange-900/10"
         />
         <StatCard 
-          title="Completed Jobs" 
+          title={isEngineer ? "My Completed Jobs" : "Completed Jobs"}
           value={stats?.completedRequests || 0} 
           icon={CheckCircle2}
           className="bg-gradient-to-br from-background to-green-50/50 dark:to-green-900/10"
@@ -72,7 +72,7 @@ export default function Dashboard() {
 
       <Card className="border-border/60 shadow-sm">
         <CardHeader>
-          <CardTitle>Average Aging of Open Cases (Days)</CardTitle>
+          <CardTitle>{isEngineer ? "Average Aging of My Open Cases (Days)" : "Average Aging of Open Cases (Days)"}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-3 gap-4">

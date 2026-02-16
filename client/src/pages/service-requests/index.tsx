@@ -55,8 +55,12 @@ export default function ServiceRequestsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold" data-testid="text-page-title">Service Requests</h1>
-          <p className="text-muted-foreground mt-1">Track and manage drone repairs</p>
+          <h1 className="text-3xl font-display font-bold" data-testid="text-page-title">
+            {profile?.role === 'engineer' ? 'My Assigned Jobs' : 'Service Requests'}
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            {profile?.role === 'engineer' ? 'View and manage your assigned service requests' : 'Track and manage drone repairs'}
+          </p>
         </div>
 
         {canCreate && (
