@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useInventory, useCreateInventoryItem, useUpdateInventoryItem, useDeleteInventoryItem } from "@/hooks/use-inventory";
 import { useCurrentUser } from "@/hooks/use-users";
 import { 
@@ -26,16 +27,23 @@ export default function InventoryPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Inventory | null>(null);
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
+  const [, navigate] = useLocation();
+
+  const role = profile?.role;
+  const isAdmin = role === 'admin';
+
+  if (profile && !isAdmin) {
+    navigate("/");
+    return null;
+  }
 
   const filteredInventory = inventory?.filter(item => 
     item.name.toLowerCase().includes(search.toLowerCase()) || 
     item.sku.toLowerCase().includes(search.toLowerCase())
   );
 
-  const role = profile?.role;
-  const isAdmin = role === 'admin';
   const canManage = isAdmin;
-  const canUpdateStock = role === 'admin' || role === 'engineer';
+  const canUpdateStock = isAdmin;
 
   return (
     <div className="space-y-6">

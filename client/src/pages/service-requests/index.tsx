@@ -91,7 +91,7 @@ export default function ServiceRequestsPage() {
           data-testid="button-tab-open"
         >
           <FolderOpen className="h-4 w-4 mr-2" />
-          Open Requests
+          {profile?.role === 'engineer' ? 'My Open Jobs' : 'Open Requests'}
           <Badge variant="secondary" className="ml-2 no-default-hover-elevate no-default-active-elevate">
             {isLoading ? "..." : openRequests.length}
           </Badge>
@@ -102,7 +102,7 @@ export default function ServiceRequestsPage() {
           data-testid="button-tab-closed"
         >
           <FolderClosed className="h-4 w-4 mr-2" />
-          Closed Requests
+          {profile?.role === 'engineer' ? 'My Closed Jobs' : 'Closed Requests'}
           <Badge variant="secondary" className="ml-2 no-default-hover-elevate no-default-active-elevate">
             {isLoading ? "..." : closedRequests.length}
           </Badge>
@@ -116,7 +116,9 @@ export default function ServiceRequestsPage() {
            ))
         ) : displayedRequests.length === 0 ? (
           <div className="col-span-full py-20 text-center text-muted-foreground" data-testid="text-empty-state">
-            {activeTab === "open" ? "No open service requests" : "No closed service requests"}
+            {profile?.role === 'engineer' 
+              ? (activeTab === "open" ? "No jobs assigned to you yet. The admin will assign service requests to you." : "You haven't completed any jobs yet.")
+              : (activeTab === "open" ? "No open service requests" : "No closed service requests")}
           </div>
         ) : (
           displayedRequests.map((req) => {

@@ -30,7 +30,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'engineer', 'account'] },
     { name: 'Service Requests', href: '/requests', icon: Wrench, roles: ['admin', 'engineer', 'account'] },
-    { name: 'Inventory', href: '/inventory', icon: Package, roles: ['admin', 'engineer'] },
+    { name: 'Inventory', href: '/inventory', icon: Package, roles: ['admin'] },
     { name: 'Users', href: '/users', icon: Users, roles: ['admin'] },
   ];
 
