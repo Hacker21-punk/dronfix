@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useInventory, useCreateInventoryItem, useUpdateInventoryItem, useDeleteInventoryItem } from "@/hooks/use-inventory";
 import { useCurrentUser } from "@/hooks/use-users";
 import { 
@@ -10,14 +10,14 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter 
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, Trash2, Edit, AlertCircle, FileUp, Download } from "lucide-react";
+import { Search, Plus, Trash2, Edit, AlertCircle, PackageOpen } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { insertInventorySchema, type Inventory } from "@shared/schema";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 
 export default function InventoryPage() {
   const { data: inventory, isLoading } = useInventory();
@@ -25,45 +25,7 @@ export default function InventoryPage() {
   const [search, setSearch] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Inventory | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const { toast } = useToast();
-
-  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch("/api/inventory/bulk-upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      const result = await res.json();
-
-      if (!res.ok) {
-        toast({ title: "Upload Failed", description: result.message, variant: "destructive" });
-        return;
-      }
-
-      toast({
-        title: "Import Complete",
-        description: `${result.success} items added successfully.${result.failed > 0 ? ` ${result.failed} failed.` : ""}`,
-        variant: result.failed > 0 ? "destructive" : "default",
-      });
-
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
-    } catch (err) {
-      toast({ title: "Upload Failed", description: "Could not upload file.", variant: "destructive" });
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
+  const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
 
   const filteredInventory = inventory?.filter(item => 
     item.name.toLowerCase().includes(search.toLowerCase()) || 
@@ -83,30 +45,15 @@ export default function InventoryPage() {
         
         {canEdit && (
           <div className="flex flex-wrap gap-2">
-            <a href="/api/inventory/template" download data-testid="link-download-template">
-              <Button variant="outline" size="sm" className="h-9">
-                <Download className="h-4 w-4 mr-2" />
-                Template
-              </Button>
-            </a>
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              className="hidden" 
-              accept=".xlsx,.xls" 
-              onChange={handleExcelUpload}
-              data-testid="input-excel-upload"
-            />
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={() => fileInputRef.current?.click()} 
+              onClick={() => setIsBulkEditOpen(true)} 
               className="h-9"
-              disabled={isUploading}
-              data-testid="button-upload-excel"
+              data-testid="button-bulk-edit-stock"
             >
-              <FileUp className="h-4 w-4 mr-2" />
-              {isUploading ? "Uploading..." : "Upload Excel"}
+              <PackageOpen className="h-4 w-4 mr-2" />
+              Bulk Edit Stock
             </Button>
             <Button size="sm" onClick={() => setIsCreateOpen(true)} className="h-9 shadow-lg shadow-primary/20" data-testid="button-add-item">
               <Plus className="h-4 w-4 mr-2" />
@@ -203,6 +150,14 @@ export default function InventoryPage() {
         mode="edit"
         defaultValues={editingItem}
       />
+
+      {inventory && (
+        <BulkEditStockDialog
+          open={isBulkEditOpen}
+          onOpenChange={setIsBulkEditOpen}
+          items={inventory}
+        />
+      )}
     </div>
   );
 }
@@ -335,6 +290,168 @@ function InventoryFormDialog({
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BulkEditStockDialog({ 
+  open, 
+  onOpenChange, 
+  items 
+}: { 
+  open: boolean; 
+  onOpenChange: (open: boolean) => void;
+  items: Inventory[];
+}) {
+  const [quantities, setQuantities] = useState<Record<number, number>>({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [bulkSearch, setBulkSearch] = useState("");
+  const { toast } = useToast();
+
+  const initQuantities = () => {
+    const q: Record<number, number> = {};
+    items.forEach(item => { q[item.id] = item.quantity; });
+    setQuantities(q);
+    setBulkSearch("");
+  };
+
+  const handleOpenChange = (isOpen: boolean) => {
+    if (isOpen) initQuantities();
+    onOpenChange(isOpen);
+  };
+
+  const changedItems = items.filter(item => quantities[item.id] !== undefined && quantities[item.id] !== item.quantity);
+
+  const handleSave = async () => {
+    if (changedItems.length === 0) {
+      onOpenChange(false);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const updates = changedItems.map(item => ({
+        id: item.id,
+        quantity: quantities[item.id],
+      }));
+
+      await apiRequest("PATCH", "/api/inventory/bulk-update", { updates });
+
+      toast({
+        title: "Stock Updated",
+        description: `${updates.length} item${updates.length > 1 ? "s" : ""} updated successfully.`,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
+      onOpenChange(false);
+    } catch (err) {
+      toast({ title: "Update Failed", description: "Could not save stock changes.", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const filteredItems = items.filter(item =>
+    item.name.toLowerCase().includes(bulkSearch.toLowerCase()) ||
+    item.sku.toLowerCase().includes(bulkSearch.toLowerCase())
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-[700px] max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Bulk Edit Stock Quantities</DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            Update stock quantities for multiple items at once. Changed items are highlighted.
+          </p>
+        </DialogHeader>
+        
+        <div className="flex items-center gap-4 bg-muted/50 p-3 rounded-lg">
+          <Search className="h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Filter items..."
+            value={bulkSearch}
+            onChange={(e) => setBulkSearch(e.target.value)}
+            className="border-0 focus-visible:ring-0 bg-transparent px-0"
+            data-testid="input-bulk-search"
+          />
+        </div>
+
+        <div className="flex-1 overflow-y-auto min-h-0 border rounded-lg">
+          <Table>
+            <TableHeader className="bg-muted/50 sticky top-0 z-10">
+              <TableRow>
+                <TableHead className="w-[100px]">SKU</TableHead>
+                <TableHead>Item Name</TableHead>
+                <TableHead className="text-right w-[100px]">Current</TableHead>
+                <TableHead className="text-right w-[130px]">New Qty</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredItems.map((item) => {
+                const isChanged = quantities[item.id] !== undefined && quantities[item.id] !== item.quantity;
+                const isLow = (quantities[item.id] ?? item.quantity) <= item.criticalLevel;
+                return (
+                  <TableRow 
+                    key={item.id} 
+                    className={isChanged ? "bg-primary/5" : ""}
+                    data-testid={`row-bulk-item-${item.id}`}
+                  >
+                    <TableCell className="font-mono text-xs text-muted-foreground">{item.sku}</TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        {item.name}
+                        {isLow && <AlertCircle className="h-3.5 w-3.5 text-destructive" />}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">{item.quantity}</TableCell>
+                    <TableCell className="text-right">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={quantities[item.id] ?? item.quantity}
+                        onChange={(e) => setQuantities(prev => ({
+                          ...prev,
+                          [item.id]: parseInt(e.target.value) || 0,
+                        }))}
+                        className={`w-24 ml-auto text-right ${isChanged ? "border-primary" : ""}`}
+                        data-testid={`input-bulk-qty-${item.id}`}
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {filteredItems.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="h-20 text-center text-muted-foreground">
+                    No items found
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        <DialogFooter className="flex-row items-center justify-between gap-2 sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            {changedItems.length > 0
+              ? `${changedItems.length} item${changedItems.length > 1 ? "s" : ""} changed`
+              : "No changes"}
+          </p>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} data-testid="button-bulk-cancel">
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSave} 
+              disabled={isSaving || changedItems.length === 0}
+              data-testid="button-bulk-save"
+            >
+              {isSaving ? "Saving..." : "Save All Changes"}
+            </Button>
+          </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

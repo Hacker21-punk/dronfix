@@ -6,8 +6,6 @@ import { z } from "zod";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import PDFDocument from "pdfkit";
-import * as XLSX from "xlsx";
-import multer from "multer";
 
 // Helper to check role
 const requireRole = (role: string) => {
@@ -106,60 +104,37 @@ export async function registerRoutes(
     res.status(204).end();
   });
 
-  // === Inventory Excel Template & Bulk Upload ===
-  app.get("/api/inventory/template", (req, res) => {
-    const wb = XLSX.utils.book_new();
-    const sampleData = [
-      { name: "Sample Part", sku: "SKU-001", quantity: 10, criticalLevel: 5, price: 1500, description: "Example item" }
-    ];
-    const ws = XLSX.utils.json_to_sheet(sampleData);
-    ws["!cols"] = [
-      { wch: 20 }, { wch: 15 }, { wch: 10 }, { wch: 15 }, { wch: 12 }, { wch: 30 }
-    ];
-    XLSX.utils.book_append_sheet(wb, ws, "Inventory");
-    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-    res.setHeader("Content-Disposition", "attachment; filename=inventory_template.xlsx");
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.send(buf);
+  // === Bulk Stock Update ===
+  const bulkUpdateSchema = z.object({
+    updates: z.array(z.object({
+      id: z.number().int().positive(),
+      quantity: z.number().int().min(0),
+    })).min(1, "At least one update is required"),
   });
 
-  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+  app.patch("/api/inventory/bulk-update", async (req: any, res) => {
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+    const userId = req.user.claims.sub;
+    const profile = await storage.getProfile(userId);
+    if (!profile || (profile.role !== "admin" && profile.role !== "engineer")) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
 
-  app.post("/api/inventory/bulk-upload", requireRole("admin"), upload.single("file"), async (req: any, res) => {
     try {
-      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+      const parsed = bulkUpdateSchema.parse(req.body);
       
-      const wb = XLSX.read(req.file.buffer, { type: "buffer" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(ws);
-      
-      const results: { success: number; failed: number; errors: string[] } = { success: 0, failed: 0, errors: [] };
-      
-      for (const row of rows) {
-        try {
-          if (!row.name || !row.sku || !row.price) {
-            results.failed++;
-            results.errors.push(`Row missing required fields: name=${row.name}, sku=${row.sku}, price=${row.price}`);
-            continue;
-          }
-          await storage.createInventoryItem({
-            name: String(row.name),
-            sku: String(row.sku),
-            quantity: Number(row.quantity || 0),
-            criticalLevel: Number(row.criticalLevel || 5),
-            price: String(row.price),
-            description: row.description ? String(row.description) : undefined,
-          });
-          results.success++;
-        } catch (err: any) {
-          results.failed++;
-          results.errors.push(`SKU ${row.sku}: ${err.message}`);
-        }
+      let successCount = 0;
+      for (const u of parsed.updates) {
+        await storage.updateInventoryItem(u.id, { quantity: u.quantity });
+        successCount++;
       }
       
-      res.json(results);
+      res.json({ success: successCount });
     } catch (err: any) {
-      res.status(400).json({ message: "Could not parse Excel file: " + err.message });
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: err.message });
     }
   });
 
