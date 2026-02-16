@@ -10,7 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter 
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, Trash2, Edit, AlertCircle, FileUp } from "lucide-react";
+import { Search, Plus, Trash2, Edit, AlertCircle, FileUp, ExternalLink } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -87,7 +87,18 @@ export default function InventoryPage() {
         </div>
         
         {canEdit && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <a 
+              href="https://docs.google.com/spreadsheets/d/1vC3z9pE7kO7tWn7Q5n5v_XlK4n4h-G6z6qX_3fW7zQ8/edit?usp=sharing" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center"
+            >
+              <Button variant="outline" size="sm" className="h-9">
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Template
+              </Button>
+            </a>
             <input 
               type="file" 
               ref={fileInputRef} 
@@ -95,13 +106,13 @@ export default function InventoryPage() {
               accept=".xlsx, .xls" 
               onChange={handleExcelUpload}
             />
-            <Button variant="outline" onClick={() => fileInputRef.current?.click()} className="h-9">
+            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="h-9">
               <FileUp className="h-4 w-4 mr-2" />
-              Excel
+              Upload Excel
             </Button>
-            <Button onClick={() => setIsCreateOpen(true)} className="shadow-lg shadow-primary/20">
+            <Button size="sm" onClick={() => setIsCreateOpen(true)} className="h-9 shadow-lg shadow-primary/20">
               <Plus className="h-4 w-4 mr-2" />
-              Add New Item
+              Add Item
             </Button>
           </div>
         )}
