@@ -62,7 +62,7 @@ export default function ServiceRequestDetail() {
         </div>
 
         <div className="flex gap-2">
-          {role === 'admin' && request.status === 'completed' && (
+          {role === 'account' && request.status === 'completed' && (
              <Button className="bg-green-600 hover:bg-green-700">
                Generate Invoice
              </Button>
