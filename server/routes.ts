@@ -47,10 +47,11 @@ export async function registerRoutes(
     if (!profile) {
       const pendingProfile = await storage.getProfileByEmail(req.user.claims.email);
       if (pendingProfile && !pendingProfile.userId) {
+        const oidcName = `${req.user.claims.first_name || ''} ${req.user.claims.last_name || ''}`.trim();
         profile = await storage.createProfile({
           id: pendingProfile.id,
           userId: req.user.claims.sub,
-          name: `${req.user.claims.first_name || ''} ${req.user.claims.last_name || ''}`.trim() || req.user.claims.email || 'User',
+          name: pendingProfile.name || oidcName || 'User',
         });
       }
     }

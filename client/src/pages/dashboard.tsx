@@ -32,7 +32,7 @@ export default function Dashboard() {
     <div className="space-y-8">
       <div>
         <h2 className="text-3xl font-display font-bold text-foreground">
-          Welcome back, {profile?.name?.split(' ')[0]}
+          Welcome back, {profile?.name?.includes('@') ? profile?.name?.split('@')[0] : profile?.name?.split(' ')[0]}
         </h2>
         <p className="text-muted-foreground mt-1">
           {isEngineer ? "Focus on your assigned service requests and inventory." : "Here's what's happening in the service centre today."}
