@@ -176,6 +176,8 @@ export function useSubmitInvoice() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [api.serviceRequests.get.path, variables.id] });
       queryClient.invalidateQueries({ queryKey: [api.serviceRequests.list.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/billed-requests"] });
+      queryClient.invalidateQueries({ queryKey: [api.reports.dashboard.path] });
       toast({ title: "Success", description: "Invoice generated successfully" });
     },
     onError: (err) => {
