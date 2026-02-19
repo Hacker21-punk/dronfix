@@ -324,10 +324,11 @@ export async function registerRoutes(
     doc.font('Helvetica').text(value || 'N/A');
   }
 
-  async function addImageToDoc(doc: PDFKit.PDFDocument, url: string, label: string, maxWidth: number = 240, maxHeight: number = 180) {
+  async function addImageToDoc(doc: PDFKit.PDFDocument, url: string, label: string) {
     const buffer = await fetchObjectAsBuffer(url);
     if (!buffer) {
-      doc.fontSize(9).fillColor('#999999').text(`[${label} - unable to load]`).fillColor('#000000');
+      doc.addPage();
+      doc.fontSize(12).fillColor('#999999').text(`[${label} - unable to load]`, { align: 'center' }).fillColor('#000000');
       return;
     }
     try {
@@ -336,30 +337,39 @@ export async function registerRoutes(
       const isJpeg = header[0] === 0xFF && header[1] === 0xD8;
       const isPdf = header.toString('ascii', 0, 5) === '%PDF-';
 
+      doc.addPage();
+
+      const pageW = 595.28;
+      const pageH = 841.89;
+      const margin = 50;
+      const contentW = pageW - margin * 2;
+      const contentH = pageH - margin * 2 - 40;
+
+      doc.fontSize(13).fillColor('#1a56db').text(label, margin, margin, { align: 'center', width: contentW });
+      doc.moveTo(margin, doc.y + 4).lineTo(pageW - margin, doc.y + 4).strokeColor('#d0d5dd').lineWidth(0.5).stroke();
+      doc.moveDown(0.8);
+
       if (isPdf) {
-        if (doc.y + 60 > 720) doc.addPage();
-        doc.fontSize(10).fillColor('#333333').text(`${label}`, { continued: false });
-        doc.fontSize(9).fillColor('#666666').text('(PDF document attached - see separate download)', { continued: false });
+        doc.fontSize(11).fillColor('#333333').text('PDF document attached — see separate download', margin, pageH / 2 - 20, { align: 'center', width: contentW });
         doc.fillColor('#000000');
-        doc.moveDown(0.5);
         return;
       }
 
       if (!isPng && !isJpeg) {
-        if (doc.y + 40 > 720) doc.addPage();
-        doc.fontSize(10).fillColor('#333333').text(`${label}`, { continued: false });
-        doc.fontSize(9).fillColor('#666666').text('(Document attached - see separate download)', { continued: false });
+        doc.fontSize(11).fillColor('#333333').text('Document attached — see separate download', margin, pageH / 2 - 20, { align: 'center', width: contentW });
         doc.fillColor('#000000');
-        doc.moveDown(0.5);
         return;
       }
 
-      if (doc.y + maxHeight + 30 > 720) doc.addPage();
-      doc.fontSize(9).fillColor('#666666').text(label).fillColor('#000000');
-      doc.image(buffer, { fit: [maxWidth, maxHeight] });
-      doc.moveDown(0.5);
+      const imgTopY = doc.y;
+      const availH = contentH - (imgTopY - margin);
+      const imgW = contentW;
+      const imgH = availH;
+
+      doc.image(buffer, margin, imgTopY, { fit: [imgW, imgH], align: 'center', valign: 'center' });
+      doc.fillColor('#000000');
     } catch (err) {
-      doc.fontSize(9).fillColor('#999999').text(`[${label} - could not embed]`).fillColor('#000000');
+      doc.fontSize(11).fillColor('#999999').text(`[${label} - could not embed]`, { align: 'center' }).fillColor('#000000');
     }
   }
 
@@ -445,11 +455,9 @@ export async function registerRoutes(
       // ===== BEFORE SERVICE IMAGES =====
       const beforeImages = request.images?.filter(img => img.type === 'before') || [];
       if (beforeImages.length > 0) {
-        addSectionHeader(doc, 'Before Service Images');
         for (let i = 0; i < beforeImages.length; i++) {
-          await addImageToDoc(doc, beforeImages[i].imageUrl, `Before Image ${i + 1}`);
+          await addImageToDoc(doc, beforeImages[i].imageUrl, `Before Service — Image ${i + 1} of ${beforeImages.length}`);
         }
-        doc.moveDown(0.5);
       }
 
       // ===== PARTS CONSUMED =====
@@ -496,11 +504,9 @@ export async function registerRoutes(
       // ===== AFTER SERVICE IMAGES =====
       const afterImages = request.images?.filter(img => img.type === 'after') || [];
       if (afterImages.length > 0) {
-        addSectionHeader(doc, 'After Service Images');
         for (let i = 0; i < afterImages.length; i++) {
-          await addImageToDoc(doc, afterImages[i].imageUrl, `After Image ${i + 1}`);
+          await addImageToDoc(doc, afterImages[i].imageUrl, `After Service — Image ${i + 1} of ${afterImages.length}`);
         }
-        doc.moveDown(0.5);
       }
 
       // ===== DOCUMENTS =====
@@ -512,9 +518,8 @@ export async function registerRoutes(
       ].filter(d => d.url);
 
       if (documents.length > 0) {
-        addSectionHeader(doc, 'Attached Documents');
         for (const docItem of documents) {
-          await addImageToDoc(doc, docItem.url!, docItem.label, 450, 350);
+          await addImageToDoc(doc, docItem.url!, `Document — ${docItem.label}`);
         }
       }
 
