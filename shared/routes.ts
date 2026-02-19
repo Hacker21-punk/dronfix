@@ -161,7 +161,10 @@ export const api = {
           totalStockValue: z.number(),
           lowStockItems: z.array(z.custom<typeof inventory.$inferSelect>()),
           pendingRequests: z.number(),
-          completedRequests: z.number()
+          completedRequests: z.number(),
+          avgAgingL1: z.number().optional(),
+          avgAgingL2: z.number().optional(),
+          avgAgingL3: z.number().optional(),
         })
       }
     }
@@ -180,7 +183,7 @@ export const api = {
       input: z.object({
         email: z.string().email(),
         name: z.string(),
-        role: z.enum(['admin', 'engineer', 'account'])
+        role: z.enum(['admin', 'engineer', 'account', 'logistics'])
       }),
       responses: {
         201: z.custom<typeof profiles.$inferSelect>()

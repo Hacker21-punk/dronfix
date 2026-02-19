@@ -28,8 +28,8 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navigation = [
-    { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'engineer', 'account'] },
-    { name: 'Service Requests', href: '/requests', icon: Wrench, roles: ['admin', 'engineer', 'account'] },
+    { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'engineer', 'account', 'logistics'] },
+    { name: 'Service Requests', href: '/requests', icon: Wrench, roles: ['admin', 'engineer', 'account', 'logistics'] },
     { name: 'Inventory', href: '/inventory', icon: Package, roles: ['admin'] },
     { name: 'Users', href: '/users', icon: Users, roles: ['admin'] },
   ];

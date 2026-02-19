@@ -4,7 +4,9 @@ import {
   useUpdateServiceRequest, 
   useConsumePart, 
   useUploadServiceImage,
-  useAssignEngineer
+  useAssignEngineer,
+  useSubmitInvoice,
+  useSubmitLogistics
 } from "@/hooks/use-service-requests";
 import { useInventory } from "@/hooks/use-inventory";
 import { useCurrentUser, useUsers } from "@/hooks/use-users";
@@ -13,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, CheckCircle, Upload, Wrench, Download, Camera, User, FileText, ArrowLeft, FolderOpen, Loader2, ZoomIn, X
+  Calendar, CheckCircle, Upload, Wrench, Download, Camera, User, FileText, ArrowLeft, FolderOpen, Loader2, ZoomIn, X, Truck, Receipt
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -63,9 +65,7 @@ export default function ServiceRequestDetail() {
 
         <div className="flex gap-2">
           {role === 'account' && request.status === 'completed' && (
-             <Button className="bg-green-600 hover:bg-green-700">
-               Generate Invoice
-             </Button>
+            <GenerateInvoiceDialog requestId={requestId} />
           )}
           
           {role === 'engineer' && request.status === 'accepted' && (
@@ -245,8 +245,28 @@ export default function ServiceRequestDetail() {
             </CardContent>
           </Card>
 
+          {/* Invoice Details (if filled) */}
+          {request.invoiceNumber && (
+            <Card>
+              <CardHeader><CardTitle className="flex items-center gap-2"><Receipt className="h-4 w-4" /> Invoice Details</CardTitle></CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-muted-foreground">Invoice No.</span><span className="font-medium" data-testid="text-invoice-number">{request.invoiceNumber}</span></div>
+                {request.challanNumber && <div className="flex justify-between"><span className="text-muted-foreground">Challan No.</span><span className="font-medium" data-testid="text-challan-number">{request.challanNumber}</span></div>}
+                <div className="flex justify-between"><span className="text-muted-foreground">Invoice Value</span><span className="font-medium" data-testid="text-invoice-value">{formatCurrency(Number(request.invoiceValue))}</span></div>
+                {request.reimbursementAmount && <div className="flex justify-between"><span className="text-muted-foreground">Reimbursement</span><span className="font-medium" data-testid="text-reimbursement">{formatCurrency(Number(request.reimbursementAmount))}</span></div>}
+                <div className="flex justify-between"><span className="text-muted-foreground">Invoice Type</span><Badge data-testid="text-invoice-type">{request.invoiceType}</Badge></div>
+                {request.invoiceDate && <div className="flex justify-between"><span className="text-muted-foreground">Invoice Date</span><span className="font-medium" data-testid="text-invoice-date">{format(new Date(request.invoiceDate), 'MMM d, yyyy')}</span></div>}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Logistics / Shipping Details */}
+          {(role === 'logistics' || role === 'admin' || request.shippingPartnerName) && (
+            <LogisticsSection requestId={requestId} request={request} role={role} />
+          )}
+
            {/* PDF Report Download */}
-           {request.status === 'completed' && (
+           {(request.status === 'completed' || request.status === 'billed') && (
              <Button variant="outline" className="w-full" onClick={() => window.open(`/api/service-requests/${requestId}/report`, '_blank')}>
                <Download className="h-4 w-4 mr-2" /> Download Full Report
              </Button>
@@ -321,6 +341,197 @@ function AcceptRequestDialog({ requestId }: { requestId: number }) {
         </Button>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function GenerateInvoiceDialog({ requestId }: { requestId: number }) {
+  const invoiceMutation = useSubmitInvoice();
+  const [open, setOpen] = useState(false);
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [challanNumber, setChallanNumber] = useState("");
+  const [invoiceValue, setInvoiceValue] = useState("");
+  const [reimbursementAmount, setReimbursementAmount] = useState("");
+  const [invoiceType, setInvoiceType] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState("");
+
+  const handleSubmit = () => {
+    if (!invoiceNumber || !invoiceValue || !invoiceType || !invoiceDate) return;
+    invoiceMutation.mutate({
+      id: requestId,
+      invoiceNumber,
+      challanNumber: challanNumber || undefined,
+      invoiceValue,
+      reimbursementAmount: reimbursementAmount || undefined,
+      invoiceType,
+      invoiceDate,
+    }, {
+      onSuccess: () => {
+        setOpen(false);
+        setInvoiceNumber("");
+        setChallanNumber("");
+        setInvoiceValue("");
+        setReimbursementAmount("");
+        setInvoiceType("");
+        setInvoiceDate("");
+      }
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button data-testid="button-generate-invoice">
+          <Receipt className="h-4 w-4 mr-2" /> Generate Invoice
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader><DialogTitle>Generate Invoice</DialogTitle></DialogHeader>
+        <div className="space-y-4 py-4">
+          <div>
+            <Label>Invoice Number *</Label>
+            <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="INV-001" data-testid="input-invoice-number" />
+          </div>
+          <div>
+            <Label>Challan Number (if any)</Label>
+            <Input value={challanNumber} onChange={(e) => setChallanNumber(e.target.value)} placeholder="CH-001" data-testid="input-challan-number" />
+          </div>
+          <div>
+            <Label>Invoice Value *</Label>
+            <Input type="number" step="0.01" value={invoiceValue} onChange={(e) => setInvoiceValue(e.target.value)} placeholder="0.00" data-testid="input-invoice-value" />
+          </div>
+          <div>
+            <Label>Reimbursement Amount</Label>
+            <Input type="number" step="0.01" value={reimbursementAmount} onChange={(e) => setReimbursementAmount(e.target.value)} placeholder="0.00" data-testid="input-reimbursement-amount" />
+          </div>
+          <div>
+            <Label>Invoice Type *</Label>
+            <Select value={invoiceType} onValueChange={setInvoiceType}>
+              <SelectTrigger data-testid="select-invoice-type"><SelectValue placeholder="Select type" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="L1">L1</SelectItem>
+                <SelectItem value="L2">L2</SelectItem>
+                <SelectItem value="L3">L3</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Date of Invoice *</Label>
+            <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} data-testid="input-invoice-date" />
+          </div>
+        </div>
+        <Button
+          onClick={handleSubmit}
+          disabled={!invoiceNumber || !invoiceValue || !invoiceType || !invoiceDate || invoiceMutation.isPending}
+          className="w-full"
+          data-testid="button-submit-invoice"
+        >
+          {invoiceMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Receipt className="h-4 w-4 mr-2" />}
+          Submit Invoice
+        </Button>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function LogisticsSection({ requestId, request, role }: { requestId: number, request: any, role: string }) {
+  const logisticsMutation = useSubmitLogistics();
+  const [open, setOpen] = useState(false);
+  const [shippingPartnerName, setShippingPartnerName] = useState(request.shippingPartnerName || "");
+  const [docketDetails, setDocketDetails] = useState(request.docketDetails || "");
+  const [shippingDate, setShippingDate] = useState(request.shippingDate ? format(new Date(request.shippingDate), 'yyyy-MM-dd') : "");
+  const [shippingStatus, setShippingStatus] = useState(request.shippingStatus || "");
+
+  const handleSubmit = () => {
+    if (!shippingPartnerName || !shippingDate || !shippingStatus) return;
+    logisticsMutation.mutate({
+      id: requestId,
+      shippingPartnerName,
+      docketDetails: docketDetails || undefined,
+      shippingDate,
+      shippingStatus,
+    }, {
+      onSuccess: () => setOpen(false),
+    });
+  };
+
+  const statusColors: Record<string, string> = {
+    shipped: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+    in_transit: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+    delivered: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Truck className="h-4 w-4" /> Shipping / Logistics</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {request.shippingPartnerName ? (
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between"><span className="text-muted-foreground">Partner</span><span className="font-medium" data-testid="text-shipping-partner">{request.shippingPartnerName}</span></div>
+            {request.docketDetails && <div className="flex justify-between"><span className="text-muted-foreground">Docket</span><span className="font-medium" data-testid="text-docket-details">{request.docketDetails}</span></div>}
+            {request.shippingDate && <div className="flex justify-between"><span className="text-muted-foreground">Ship Date</span><span className="font-medium" data-testid="text-shipping-date">{format(new Date(request.shippingDate), 'MMM d, yyyy')}</span></div>}
+            {request.shippingStatus && (
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Status</span>
+                <Badge className={statusColors[request.shippingStatus] || ""} data-testid="text-shipping-status">
+                  {request.shippingStatus.replace('_', ' ')}
+                </Badge>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No shipping details yet.</p>
+        )}
+
+        {(role === 'logistics' || role === 'admin') && (
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="w-full" data-testid="button-update-logistics">
+                <Truck className="h-4 w-4 mr-2" /> {request.shippingPartnerName ? "Update Shipping" : "Add Shipping Details"}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader><DialogTitle>Shipping Details</DialogTitle></DialogHeader>
+              <div className="space-y-4 py-4">
+                <div>
+                  <Label>Shipping Partner Name *</Label>
+                  <Input value={shippingPartnerName} onChange={(e) => setShippingPartnerName(e.target.value)} placeholder="e.g. BlueDart, DTDC" data-testid="input-shipping-partner" />
+                </div>
+                <div>
+                  <Label>Docket Details</Label>
+                  <Input value={docketDetails} onChange={(e) => setDocketDetails(e.target.value)} placeholder="Docket / AWB number" data-testid="input-docket-details" />
+                </div>
+                <div>
+                  <Label>Shipping Date *</Label>
+                  <Input type="date" value={shippingDate} onChange={(e) => setShippingDate(e.target.value)} data-testid="input-shipping-date" />
+                </div>
+                <div>
+                  <Label>Shipping Status *</Label>
+                  <Select value={shippingStatus} onValueChange={setShippingStatus}>
+                    <SelectTrigger data-testid="select-shipping-status"><SelectValue placeholder="Select status" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="shipped">Shipped</SelectItem>
+                      <SelectItem value="in_transit">In Transit</SelectItem>
+                      <SelectItem value="delivered">Delivered</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Button
+                onClick={handleSubmit}
+                disabled={!shippingPartnerName || !shippingDate || !shippingStatus || logisticsMutation.isPending}
+                className="w-full"
+                data-testid="button-submit-logistics"
+              >
+                {logisticsMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Truck className="h-4 w-4 mr-2" />}
+                Save Shipping Details
+              </Button>
+            </DialogContent>
+          </Dialog>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

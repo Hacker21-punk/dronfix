@@ -252,7 +252,7 @@ export async function registerRoutes(
       const data = z.object({
         name: z.string().min(1).optional(),
         email: z.string().email().optional(),
-        role: z.enum(["admin", "engineer", "account"]).optional(),
+        role: z.enum(["admin", "engineer", "account", "logistics"]).optional(),
       }).parse(req.body);
       const profile = await storage.updateProfile(parseInt(req.params.id), data);
       if (!profile) return res.status(404).json({ message: "User not found" });
@@ -287,6 +287,77 @@ export async function registerRoutes(
         return res.status(400).json({ message: err.errors[0].message });
       }
       res.status(500).json({ message: "Error creating user: " + err.message });
+    }
+  });
+
+  // === Invoice Submission (Accounts) ===
+  const invoiceSubmitSchema = z.object({
+    invoiceNumber: z.string().min(1, "Invoice number is required"),
+    challanNumber: z.string().optional(),
+    invoiceValue: z.string().min(1, "Invoice value is required"),
+    reimbursementAmount: z.string().optional(),
+    invoiceType: z.enum(["L1", "L2", "L3"], { required_error: "Invoice type is required" }),
+    invoiceDate: z.string().min(1, "Invoice date is required"),
+  });
+
+  app.patch("/api/service-requests/:id/invoice", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+    const userId = req.user.claims.sub;
+    const profile = await storage.getProfile(userId);
+    if (!profile || (profile.role !== "account" && profile.role !== "admin")) {
+      return res.status(403).json({ message: "Only accounts team can generate invoices" });
+    }
+    try {
+      const data = invoiceSubmitSchema.parse(req.body);
+      const id = parseInt(req.params.id);
+      const updated = await storage.updateServiceRequest(id, {
+        invoiceNumber: data.invoiceNumber,
+        challanNumber: data.challanNumber || null,
+        invoiceValue: data.invoiceValue,
+        reimbursementAmount: data.reimbursementAmount || null,
+        invoiceType: data.invoiceType,
+        invoiceDate: new Date(data.invoiceDate),
+        status: "billed",
+      } as any);
+      res.json(updated);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // === Logistics / Shipping Details ===
+  const logisticsSubmitSchema = z.object({
+    shippingPartnerName: z.string().min(1, "Shipping partner name is required"),
+    docketDetails: z.string().optional(),
+    shippingDate: z.string().min(1, "Shipping date is required"),
+    shippingStatus: z.enum(["shipped", "in_transit", "delivered"], { required_error: "Shipping status is required" }),
+  });
+
+  app.patch("/api/service-requests/:id/logistics", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+    const userId = req.user.claims.sub;
+    const profile = await storage.getProfile(userId);
+    if (!profile || (profile.role !== "logistics" && profile.role !== "admin")) {
+      return res.status(403).json({ message: "Only logistics team can update shipping details" });
+    }
+    try {
+      const data = logisticsSubmitSchema.parse(req.body);
+      const id = parseInt(req.params.id);
+      const updated = await storage.updateServiceRequest(id, {
+        shippingPartnerName: data.shippingPartnerName,
+        docketDetails: data.docketDetails || null,
+        shippingDate: new Date(data.shippingDate),
+        shippingStatus: data.shippingStatus,
+      } as any);
+      res.json(updated);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: err.message });
     }
   });
 

@@ -155,6 +155,64 @@ export function useConsumePart() {
   });
 }
 
+export function useSubmitInvoice() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: number; invoiceNumber: string; challanNumber?: string; invoiceValue: string; reimbursementAmount?: string; invoiceType: string; invoiceDate: string }) => {
+      const res = await fetch(`/api/service-requests/${id}/invoice`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to submit invoice");
+      }
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.serviceRequests.get.path, variables.id] });
+      queryClient.invalidateQueries({ queryKey: [api.serviceRequests.list.path] });
+      toast({ title: "Success", description: "Invoice generated successfully" });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
+export function useSubmitLogistics() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: number; shippingPartnerName: string; docketDetails?: string; shippingDate: string; shippingStatus: string }) => {
+      const res = await fetch(`/api/service-requests/${id}/logistics`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to update logistics");
+      }
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.serviceRequests.get.path, variables.id] });
+      queryClient.invalidateQueries({ queryKey: [api.serviceRequests.list.path] });
+      toast({ title: "Success", description: "Shipping details updated" });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
 export function useDashboardStats() {
   return useQuery({
     queryKey: [api.reports.dashboard.path],

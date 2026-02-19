@@ -12,7 +12,7 @@ export interface IStorage {
   getProfile(userId: string): Promise<Profile | undefined>;
   getProfileByEmail(email: string): Promise<Profile | undefined>;
   createProfile(profile: any): Promise<Profile>;
-  updateProfile(id: number, data: { name?: string; email?: string; role?: 'admin' | 'engineer' | 'account' }): Promise<Profile | undefined>;
+  updateProfile(id: number, data: { name?: string; email?: string; role?: 'admin' | 'engineer' | 'account' | 'logistics' }): Promise<Profile | undefined>;
   getAllProfiles(): Promise<Profile[]>;
   
   // Inventory
@@ -65,7 +65,7 @@ export class DatabaseStorage implements IStorage {
     return profile;
   }
   
-  async updateProfile(id: number, data: { name?: string; email?: string; role?: 'admin' | 'engineer' | 'account' }): Promise<Profile | undefined> {
+  async updateProfile(id: number, data: { name?: string; email?: string; role?: 'admin' | 'engineer' | 'account' | 'logistics' }): Promise<Profile | undefined> {
     const [updated] = await db.update(profiles)
       .set(data)
       .where(eq(profiles.id, id))

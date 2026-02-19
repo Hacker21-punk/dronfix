@@ -130,6 +130,7 @@ function CreateUserDialog({ open, onOpenChange }: { open: boolean, onOpenChange:
                 <SelectItem value="admin">Admin</SelectItem>
                 <SelectItem value="engineer">Field Engineer</SelectItem>
                 <SelectItem value="account">Accounts</SelectItem>
+                <SelectItem value="logistics">Logistics</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -183,6 +184,7 @@ function EditUserDialog({ user, onOpenChange }: { user: UserData | null, onOpenC
                 <SelectItem value="admin">Admin</SelectItem>
                 <SelectItem value="engineer">Field Engineer</SelectItem>
                 <SelectItem value="account">Accounts</SelectItem>
+                <SelectItem value="logistics">Logistics</SelectItem>
               </SelectContent>
             </Select>
           </div>
