@@ -63,6 +63,7 @@ export const serviceRequests = pgTable("service_requests", {
   jobSheetUrl: text("job_sheet_url"),
   feedbackFormUrl: text("feedback_form_url"),
   crashReportUrl: text("crash_report_url"),
+  auditReportUrl: text("audit_report_url"),
   logReportUrl: text("log_report_url"),
   
   // Billing

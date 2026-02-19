@@ -219,6 +219,18 @@ export default function ServiceRequestDetail() {
                 canUpload={role === 'engineer'}
                 onUpload={(url) => updateMutation.mutate({ id: requestId, crashReportUrl: url })} 
               />
+              <DocumentUpload 
+                label="Audit Report" 
+                url={request.auditReportUrl} 
+                canUpload={role === 'engineer'}
+                onUpload={(url) => updateMutation.mutate({ id: requestId, auditReportUrl: url })} 
+              />
+              <DocumentUpload 
+                label="Log Report" 
+                url={request.logReportUrl} 
+                canUpload={role === 'engineer'}
+                onUpload={(url) => updateMutation.mutate({ id: requestId, logReportUrl: url })} 
+              />
               {role === 'account' && (
                 <>
                   <Separator className="my-2" />

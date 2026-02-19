@@ -514,6 +514,8 @@ export async function registerRoutes(
         { label: 'Job Sheet', url: request.jobSheetUrl },
         { label: 'Feedback Form', url: request.feedbackFormUrl },
         { label: 'Crash Report', url: request.crashReportUrl },
+        { label: 'Audit Report', url: request.auditReportUrl },
+        { label: 'Log Report', url: request.logReportUrl },
         { label: 'Invoice', url: request.invoiceUrl },
       ].filter(d => d.url);
 
