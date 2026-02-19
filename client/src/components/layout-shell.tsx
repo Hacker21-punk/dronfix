@@ -6,7 +6,8 @@ import {
   Package, 
   Wrench, 
   Users, 
-  FileText, 
+  FileText,
+  Receipt,
   LogOut,
   Menu,
   X,
@@ -30,6 +31,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'engineer', 'account', 'logistics'] },
     { name: 'Service Requests', href: '/requests', icon: Wrench, roles: ['admin', 'engineer', 'account', 'logistics'] },
+    { name: 'Billing Data', href: '/billing', icon: Receipt, roles: ['admin', 'account'] },
     { name: 'Inventory', href: '/inventory', icon: Package, roles: ['admin'] },
     { name: 'Users', href: '/users', icon: Users, roles: ['admin'] },
   ];

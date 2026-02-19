@@ -162,10 +162,16 @@ export default function Dashboard() {
               </a>
             )}
             {isAccount && (
-              <a href="/requests" className="flex flex-col items-center justify-center p-6 bg-muted/30 hover:bg-muted/60 rounded-xl border border-dashed border-border transition-colors">
-                <FileText className="h-8 w-8 mb-2 text-primary" />
-                <span className="font-medium">Billing</span>
-              </a>
+              <>
+                <a href="/billing" className="flex flex-col items-center justify-center p-6 bg-muted/30 hover:bg-muted/60 rounded-xl border border-dashed border-border transition-colors">
+                  <FileText className="h-8 w-8 mb-2 text-primary" />
+                  <span className="font-medium">Billing Data</span>
+                </a>
+                <a href="/requests" className="flex flex-col items-center justify-center p-6 bg-muted/30 hover:bg-muted/60 rounded-xl border border-dashed border-border transition-colors">
+                  <Wrench className="h-8 w-8 mb-2 text-primary" />
+                  <span className="font-medium">Service Requests</span>
+                </a>
+              </>
             )}
           </CardContent>
         </Card>

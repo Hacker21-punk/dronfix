@@ -361,6 +361,23 @@ export async function registerRoutes(
     }
   });
 
+  // === Billed Data API (Accounts) ===
+  app.get("/api/billed-requests", async (req: any, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+    const userId = req.user.claims.sub;
+    const profile = await storage.getProfile(userId);
+    if (!profile || (profile.role !== "account" && profile.role !== "admin")) {
+      return res.status(403).json({ message: "Only accounts team can view billed data" });
+    }
+    try {
+      const allRequests = await storage.getAllServiceRequests();
+      const billedRequests = allRequests.filter(r => r.status === "billed");
+      res.json(billedRequests);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // === Reports (PDF) ===
   const objectStorageService = new ObjectStorageService();
 

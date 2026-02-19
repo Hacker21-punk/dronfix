@@ -12,6 +12,7 @@ import InventoryPage from "@/pages/inventory";
 import ServiceRequestsPage from "@/pages/service-requests/index";
 import ServiceRequestDetail from "@/pages/service-requests/detail";
 import UsersPage from "@/pages/users";
+import BillingPage from "@/pages/billing";
 import AuthPage from "@/pages/auth";
 import NotFound from "@/pages/not-found";
 
@@ -24,6 +25,7 @@ function ProtectedRoutes() {
         <Route path="/requests" component={ServiceRequestsPage} />
         <Route path="/requests/:id" component={ServiceRequestDetail} />
         <Route path="/users" component={UsersPage} />
+        <Route path="/billing" component={BillingPage} />
         <Route component={NotFound} />
       </Switch>
     </LayoutShell>
