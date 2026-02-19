@@ -246,16 +246,18 @@ export async function registerRoutes(
     res.json(profiles);
   });
 
-  app.patch("/api/users/:id/role", requireRole("admin"), async (req, res) => {
+  app.patch("/api/users/:id", requireRole("admin"), async (req, res) => {
     try {
-      const { role } = z.object({ role: z.enum(["admin", "engineer", "account"]) }).parse(req.body);
-      const profile = await storage.createProfile({
-        id: parseInt(req.params.id),
-        role
-      });
+      const data = z.object({
+        name: z.string().min(1).optional(),
+        email: z.string().email().optional(),
+        role: z.enum(["admin", "engineer", "account"]).optional(),
+      }).parse(req.body);
+      const profile = await storage.updateProfile(parseInt(req.params.id), data);
+      if (!profile) return res.status(404).json({ message: "User not found" });
       res.json(profile);
     } catch (err) {
-      res.status(400).json({ message: "Invalid role" });
+      res.status(400).json({ message: "Invalid data" });
     }
   });
 

@@ -35,6 +35,31 @@ export function useCreateUser() {
   });
 }
 
+export function useUpdateUser() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: number; name?: string; email?: string; role?: 'admin' | 'engineer' | 'account' }) => {
+      const res = await fetch(`/api/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update user");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.users.list.path] });
+      toast({ title: "Success", description: "User updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update user", variant: "destructive" });
+    },
+  });
+}
+
 export function useCurrentUser() {
   return useQuery({
     queryKey: [api.auth.me.path],
