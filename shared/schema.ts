@@ -7,9 +7,10 @@ import { users } from "./models/auth";
 export * from "./models/auth";
 
 // Enums
-export const roleEnum = pgEnum("role", ["admin", "engineer", "account"]);
+export const roleEnum = pgEnum("role", ["admin", "engineer", "account", "logistics"]);
 export const serviceTypeEnum = pgEnum("service_type", ["L1", "L2", "L3"]);
 export const serviceStatusEnum = pgEnum("service_status", ["pending", "accepted", "in_progress", "completed", "billed"]);
+export const shippingStatusEnum = pgEnum("shipping_status", ["shipped", "in_transit", "delivered"]);
 
 // Extend users table with role - we'll do this by defining a separate profile table 
 // or just assuming we can add to the auth schema. 
@@ -66,10 +67,22 @@ export const serviceRequests = pgTable("service_requests", {
   auditReportUrl: text("audit_report_url"),
   logReportUrl: text("log_report_url"),
   
-  // Billing
+  // Billing / Invoice
   invoiceUrl: text("invoice_url"),
   challanUrl: text("challan_url"),
   billNo: text("bill_no"),
+  invoiceNumber: text("invoice_number"),
+  challanNumber: text("challan_number"),
+  invoiceValue: decimal("invoice_value", { precision: 12, scale: 2 }),
+  reimbursementAmount: decimal("reimbursement_amount", { precision: 12, scale: 2 }),
+  invoiceType: text("invoice_type"),
+  invoiceDate: timestamp("invoice_date"),
+
+  // Logistics / Shipping
+  shippingPartnerName: text("shipping_partner_name"),
+  docketDetails: text("docket_details"),
+  shippingDate: timestamp("shipping_date"),
+  shippingStatus: shippingStatusEnum("shipping_status"),
   
   createdAt: timestamp("created_at").defaultNow(),
 });
