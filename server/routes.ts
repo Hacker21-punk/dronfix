@@ -254,10 +254,24 @@ export async function registerRoutes(
         email: z.string().email().optional(),
         role: z.enum(["admin", "engineer", "account", "logistics"]).optional(),
       }).parse(req.body);
+
+      if (data.email) {
+        const existing = await storage.getProfileByEmail(data.email);
+        if (existing && existing.id !== parseInt(req.params.id)) {
+          return res.status(400).json({ message: `Email "${data.email}" is already used by another user (${existing.name}). Please delete that user first or use a different email.` });
+        }
+      }
+
       const profile = await storage.updateProfile(parseInt(req.params.id), data);
       if (!profile) return res.status(404).json({ message: "User not found" });
       res.json(profile);
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err?.code === '23505') {
+        return res.status(400).json({ message: "This email is already in use by another user." });
+      }
       res.status(400).json({ message: "Invalid data" });
     }
   });
