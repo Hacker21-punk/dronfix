@@ -1,12 +1,12 @@
 import { useServiceRequests, useCreateServiceRequest } from "@/hooks/use-service-requests";
 import { useCurrentUser, useUsers } from "@/hooks/use-users";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Clock, User, MapPin, FolderOpen, FolderClosed, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Plus, Search, Clock, FolderOpen, FolderClosed, Loader2, CheckCircle2, XCircle, Filter, ArrowUpDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { useState, useEffect, useCallback } from "react";
-import { Link } from "wouter";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useLocation } from "wouter";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle
 } from "@/components/ui/dialog";
@@ -17,6 +17,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertServiceRequestSchema } from "@shared/schema";
 import { format, differenceInDays } from "date-fns";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 
 const OPEN_STATUSES = ["pending", "accepted", "in_progress"];
 const CLOSED_STATUSES = ["completed", "billed"];
@@ -27,18 +30,60 @@ export default function ServiceRequestsPage() {
   const [search, setSearch] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"open" | "closed">("open");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"id" | "aging" | "pilot" | "type">("id");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const canCreate = profile?.role === 'admin';
 
   const searchFiltered = requests?.filter(req =>
     req.pilotName.toLowerCase().includes(search.toLowerCase()) ||
-    req.droneNo.toLowerCase().includes(search.toLowerCase())
+    req.droneNo.toLowerCase().includes(search.toLowerCase()) ||
+    (req.state || "").toLowerCase().includes(search.toLowerCase()) ||
+    (req.district || "").toLowerCase().includes(search.toLowerCase()) ||
+    (req.pincode || "").includes(search)
   );
 
   const openRequests = searchFiltered?.filter(req => OPEN_STATUSES.includes(req.status)) || [];
   const closedRequests = searchFiltered?.filter(req => CLOSED_STATUSES.includes(req.status)) || [];
 
-  const displayedRequests = activeTab === "open" ? openRequests : closedRequests;
+  const baseList = activeTab === "open" ? openRequests : closedRequests;
+
+  const filteredRequests = useMemo(() => {
+    let list = [...baseList];
+    if (statusFilter !== "all") {
+      list = list.filter(r => r.status === statusFilter);
+    }
+    if (typeFilter !== "all") {
+      list = list.filter(r => r.serviceType === typeFilter);
+    }
+    list.sort((a, b) => {
+      let cmp = 0;
+      switch (sortBy) {
+        case "id": cmp = a.id - b.id; break;
+        case "aging": {
+          const aAge = a.createdAt ? differenceInDays(new Date(), new Date(a.createdAt)) : 0;
+          const bAge = b.createdAt ? differenceInDays(new Date(), new Date(b.createdAt)) : 0;
+          cmp = aAge - bAge;
+          break;
+        }
+        case "pilot": cmp = a.pilotName.localeCompare(b.pilotName); break;
+        case "type": cmp = a.serviceType.localeCompare(b.serviceType); break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return list;
+  }, [baseList, statusFilter, typeFilter, sortBy, sortDir]);
+
+  const toggleSort = (col: typeof sortBy) => {
+    if (sortBy === col) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(col);
+      setSortDir("desc");
+    }
+  };
 
   const getStatusVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
@@ -49,6 +94,18 @@ export default function ServiceRequestsPage() {
       case 'billed': return 'secondary';
       default: return 'outline';
     }
+  };
+
+  const statusOptions = activeTab === "open"
+    ? [{ value: "all", label: "All Statuses" }, { value: "pending", label: "Pending" }, { value: "accepted", label: "Accepted" }, { value: "in_progress", label: "In Progress" }]
+    : [{ value: "all", label: "All Statuses" }, { value: "completed", label: "Completed" }, { value: "billed", label: "Billed" }];
+
+  const [, navigate] = useLocation();
+
+  const handleTabChange = (tab: "open" | "closed") => {
+    setActiveTab(tab);
+    setStatusFilter("all");
+    setTypeFilter("all");
   };
 
   return (
@@ -71,110 +128,187 @@ export default function ServiceRequestsPage() {
         )}
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by Pilot or Drone No..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10 bg-card"
-            data-testid="input-search-requests"
-          />
-        </div>
-      </div>
-
       <div className="flex gap-2">
         <Button
           variant={activeTab === "open" ? "default" : "outline"}
-          onClick={() => setActiveTab("open")}
+          onClick={() => handleTabChange("open")}
           data-testid="button-tab-open"
         >
           <FolderOpen className="h-4 w-4 mr-2" />
-          {profile?.role === 'engineer' ? 'My Open Jobs' : 'Open Requests'}
+          {profile?.role === 'engineer' ? 'Open Jobs' : 'Open Requests'}
           <Badge variant="secondary" className="ml-2 no-default-hover-elevate no-default-active-elevate">
             {isLoading ? "..." : openRequests.length}
           </Badge>
         </Button>
         <Button
           variant={activeTab === "closed" ? "default" : "outline"}
-          onClick={() => setActiveTab("closed")}
+          onClick={() => handleTabChange("closed")}
           data-testid="button-tab-closed"
         >
           <FolderClosed className="h-4 w-4 mr-2" />
-          {profile?.role === 'engineer' ? 'My Closed Jobs' : 'Closed Requests'}
+          {profile?.role === 'engineer' ? 'Closed Jobs' : 'Closed Requests'}
           <Badge variant="secondary" className="ml-2 no-default-hover-elevate no-default-active-elevate">
             {isLoading ? "..." : closedRequests.length}
           </Badge>
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {isLoading ? (
-           Array(6).fill(0).map((_, i) => (
-             <div key={i} className="h-64 bg-muted/50 rounded-2xl animate-pulse" />
-           ))
-        ) : displayedRequests.length === 0 ? (
-          <div className="col-span-full py-20 text-center text-muted-foreground" data-testid="text-empty-state">
-            {profile?.role === 'engineer' 
-              ? (activeTab === "open" ? "No jobs assigned to you yet. The admin will assign service requests to you." : "You haven't completed any jobs yet.")
-              : (activeTab === "open" ? "No open service requests" : "No closed service requests")}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by pilot, drone, location, pincode..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-10"
+                data-testid="input-search-requests"
+              />
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[150px]" data-testid="select-filter-status">
+                  <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {statusOptions.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="w-[130px]" data-testid="select-filter-type">
+                  <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="L1">L1</SelectItem>
+                  <SelectItem value="L2">L2</SelectItem>
+                  <SelectItem value="L3">L3</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        ) : (
-          displayedRequests.map((req) => {
-            const agingDays = req.createdAt ? differenceInDays(new Date(), new Date(req.createdAt)) : 0;
-            const agingLabel = agingDays === 0 ? 'Today' : agingDays === 1 ? '1 day' : `${agingDays} days`;
-
-            return (
-              <Link key={req.id} href={`/requests/${req.id}`}>
-                <Card className="h-full hover-elevate cursor-pointer" data-testid={`card-request-${req.id}`}>
-                  <CardContent className="p-6 flex flex-col h-full">
-                    <div className="flex justify-between items-start mb-4 gap-2">
-                      <Badge variant="outline" className="font-mono text-xs no-default-hover-elevate no-default-active-elevate">
-                        #{req.id.toString().padStart(4, '0')}
-                      </Badge>
-                      <Badge variant={getStatusVariant(req.status)} className="text-xs uppercase tracking-wider no-default-hover-elevate no-default-active-elevate" data-testid={`text-status-${req.id}`}>
-                        {req.status.replace('_', ' ')}
-                      </Badge>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[80px] cursor-pointer select-none" onClick={() => toggleSort("id")} data-testid="sort-sr">
+                    <div className="flex items-center gap-1">
+                      SR#
+                      <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
                     </div>
+                  </TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("pilot")} data-testid="sort-pilot">
+                    <div className="flex items-center gap-1">
+                      Pilot Name
+                      <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
+                  </TableHead>
+                  <TableHead>Drone No.</TableHead>
+                  <TableHead>Location</TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("type")} data-testid="sort-type">
+                    <div className="flex items-center gap-1">
+                      Type
+                      <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
+                  </TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("aging")} data-testid="sort-aging">
+                    <div className="flex items-center gap-1">
+                      Aging
+                      <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
+                  </TableHead>
+                  <TableHead>Assigned To</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  Array(5).fill(0).map((_, i) => (
+                    <TableRow key={i}>
+                      {Array(8).fill(0).map((_, j) => (
+                        <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse w-full" /></TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : filteredRequests.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-12 text-muted-foreground" data-testid="text-empty-state">
+                      {profile?.role === 'engineer'
+                        ? (activeTab === "open" ? "No jobs assigned to you yet." : "No completed jobs yet.")
+                        : (activeTab === "open" ? "No open service requests" : "No closed service requests")}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredRequests.map((req) => {
+                    const agingDays = req.createdAt ? differenceInDays(new Date(), new Date(req.createdAt)) : 0;
+                    const agingLabel = agingDays === 0 ? 'Today' : agingDays === 1 ? '1 day' : `${agingDays} days`;
+                    const location = [req.district, req.state].filter(Boolean).join(', ');
 
-                    <div className="space-y-3 flex-1">
-                      <div className="flex items-start gap-2">
-                        <User className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <div>
-                          <p className="font-semibold" data-testid={`text-pilot-${req.id}`}>{req.pilotName}</p>
-                          <p className="text-sm text-muted-foreground font-mono" data-testid={`text-drone-serial-${req.id}`}>
-                            {req.droneSerial || req.droneNo}
-                          </p>
-                        </div>
-                      </div>
-
-                      {(req.state || req.district) && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <MapPin className="h-3.5 w-3.5 shrink-0" />
-                          <span data-testid={`text-location-${req.id}`}>
-                            {[req.district, req.state].filter(Boolean).join(', ')}
+                    return (
+                      <TableRow
+                        key={req.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => navigate(`/requests/${req.id}`)}
+                        data-testid={`row-request-${req.id}`}
+                      >
+                        <TableCell>
+                          <span className="font-mono text-sm font-medium text-primary" data-testid={`text-sr-${req.id}`}>
+                            #{req.id.toString().padStart(4, '0')}
                           </span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/50 text-xs text-muted-foreground">
-                        <div className="flex items-center gap-1.5">
-                          <Clock className="h-3 w-3" />
-                          <span data-testid={`text-aging-${req.id}`}>Aging: {agingLabel}</span>
-                        </div>
-                        <Badge variant="secondary" className="text-xs no-default-hover-elevate no-default-active-elevate">
-                          {req.serviceType}
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            );
-          })
-        )}
-      </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-medium" data-testid={`text-pilot-${req.id}`}>{req.pilotName}</span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm font-mono" data-testid={`text-drone-${req.id}`}>{req.droneNo}</span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-muted-foreground" data-testid={`text-location-${req.id}`}>
+                            {location || '-'}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="text-xs no-default-hover-elevate no-default-active-elevate" data-testid={`text-type-${req.id}`}>
+                            {req.serviceType}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={getStatusVariant(req.status)} className="text-xs uppercase tracking-wider no-default-hover-elevate no-default-active-elevate" data-testid={`text-status-${req.id}`}>
+                            {req.status.replace('_', ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1.5 text-sm">
+                            <Clock className="h-3 w-3 text-muted-foreground" />
+                            <span data-testid={`text-aging-${req.id}`}>{agingLabel}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm" data-testid={`text-assigned-${req.id}`}>
+                            {req.assignedTo?.name || '-'}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          {!isLoading && filteredRequests.length > 0 && (
+            <div className="px-4 py-3 border-t text-sm text-muted-foreground">
+              Showing {filteredRequests.length} of {baseList.length} {activeTab === "open" ? "open" : "closed"} requests
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <CreateRequestDialog open={isCreateOpen} onOpenChange={setIsCreateOpen} />
     </div>
