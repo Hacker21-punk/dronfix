@@ -1,6 +1,6 @@
 import { useDashboardStats } from "@/hooks/use-service-requests";
 import { StatCard } from "@/components/stat-card";
-import { Package, AlertTriangle, CheckCircle2, Clock, Wrench, Users, FileText, Timer } from "lucide-react";
+import { Package, AlertTriangle, CheckCircle2, Clock, Wrench, Users, FileText, Timer, Truck } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { useCurrentUser } from "@/hooks/use-users";
 import { formatCurrency } from "@/lib/utils";
@@ -23,10 +23,10 @@ export default function Dashboard() {
 
   const role = profile?.role || 'engineer';
 
-  // Engineer-only view filters or content changes can go here
   const isAdmin = role === 'admin';
   const isEngineer = role === 'engineer';
   const isAccount = role === 'account';
+  const isLogistics = role === 'logistics';
 
   return (
     <div className="space-y-8">
@@ -35,7 +35,9 @@ export default function Dashboard() {
           Welcome back, {profile?.name?.includes('@') ? profile?.name?.split('@')[0] : profile?.name?.split(' ')[0]}
         </h2>
         <p className="text-muted-foreground mt-1">
-          {isEngineer ? "Focus on your assigned service requests and inventory." : "Here's what's happening in the service centre today."}
+          {isEngineer ? "Focus on your assigned service requests and inventory." 
+           : isLogistics ? "Manage shipping and delivery for service requests."
+           : "Here's what's happening in the service centre today."}
         </p>
       </div>
 
@@ -48,14 +50,22 @@ export default function Dashboard() {
             className="bg-gradient-to-br from-background to-blue-50/50 dark:to-blue-900/10"
           />
         )}
+        {isLogistics && (
+          <StatCard 
+            title="Total Requests" 
+            value={(stats?.pendingRequests || 0) + (stats?.completedRequests || 0)} 
+            icon={Wrench}
+            className="bg-gradient-to-br from-background to-blue-50/50 dark:to-blue-900/10"
+          />
+        )}
         <StatCard 
-          title={isEngineer ? "My Active Jobs" : "Pending Requests"}
+          title={isEngineer ? "My Active Jobs" : isLogistics ? "Pending Shipping" : "Pending Requests"}
           value={stats?.pendingRequests || 0} 
-          icon={Clock}
+          icon={isLogistics ? Truck : Clock}
           className="bg-gradient-to-br from-background to-orange-50/50 dark:to-orange-900/10"
         />
         <StatCard 
-          title={isEngineer ? "My Completed Jobs" : "Completed Jobs"}
+          title={isEngineer ? "My Completed Jobs" : isLogistics ? "Completed / Delivered" : "Completed Jobs"}
           value={stats?.completedRequests || 0} 
           icon={CheckCircle2}
           className="bg-gradient-to-br from-background to-green-50/50 dark:to-green-900/10"
@@ -72,7 +82,7 @@ export default function Dashboard() {
 
       <Card className="border-border/60 shadow-sm">
         <CardHeader>
-          <CardTitle>{isEngineer ? "Average Aging of My Open Cases (Days)" : "Average Aging of Open Cases (Days)"}</CardTitle>
+          <CardTitle>{isEngineer ? "Average Aging of My Open Cases (Days)" : isLogistics ? "Average Aging of Pending Shipments (Days)" : "Average Aging of Open Cases (Days)"}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-3 gap-4">
@@ -172,6 +182,12 @@ export default function Dashboard() {
                   <span className="font-medium">Service Requests</span>
                 </a>
               </>
+            )}
+            {isLogistics && (
+              <a href="/requests" className="flex flex-col items-center justify-center p-6 bg-muted/30 hover:bg-muted/60 rounded-xl border border-dashed border-border transition-colors">
+                <Truck className="h-8 w-8 mb-2 text-primary" />
+                <span className="font-medium">Manage Shipping</span>
+              </a>
             )}
           </CardContent>
         </Card>

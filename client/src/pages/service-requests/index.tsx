@@ -32,17 +32,21 @@ export default function ServiceRequestsPage() {
   const [activeTab, setActiveTab] = useState<"open" | "closed">("open");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [shippingFilter, setShippingFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"id" | "aging" | "pilot" | "type">("id");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const canCreate = profile?.role === 'admin';
+  const isLogistics = profile?.role === 'logistics';
 
   const searchFiltered = requests?.filter(req =>
     req.pilotName.toLowerCase().includes(search.toLowerCase()) ||
     req.droneNo.toLowerCase().includes(search.toLowerCase()) ||
     (req.state || "").toLowerCase().includes(search.toLowerCase()) ||
     (req.district || "").toLowerCase().includes(search.toLowerCase()) ||
-    (req.pincode || "").includes(search)
+    (req.pincode || "").includes(search) ||
+    (req.shippingPartnerName || "").toLowerCase().includes(search.toLowerCase()) ||
+    (req.docketDetails || "").toLowerCase().includes(search.toLowerCase())
   );
 
   const openRequests = searchFiltered?.filter(req => OPEN_STATUSES.includes(req.status)) || [];
@@ -57,6 +61,13 @@ export default function ServiceRequestsPage() {
     }
     if (typeFilter !== "all") {
       list = list.filter(r => r.serviceType === typeFilter);
+    }
+    if (shippingFilter !== "all") {
+      if (shippingFilter === "not_shipped") {
+        list = list.filter(r => !r.shippingStatus);
+      } else {
+        list = list.filter(r => r.shippingStatus === shippingFilter);
+      }
     }
     list.sort((a, b) => {
       let cmp = 0;
@@ -74,7 +85,7 @@ export default function ServiceRequestsPage() {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return list;
-  }, [baseList, statusFilter, typeFilter, sortBy, sortDir]);
+  }, [baseList, statusFilter, typeFilter, shippingFilter, sortBy, sortDir]);
 
   const toggleSort = (col: typeof sortBy) => {
     if (sortBy === col) {
@@ -106,6 +117,7 @@ export default function ServiceRequestsPage() {
     setActiveTab(tab);
     setStatusFilter("all");
     setTypeFilter("all");
+    setShippingFilter("all");
   };
 
   return (
@@ -113,10 +125,12 @@ export default function ServiceRequestsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold" data-testid="text-page-title">
-            {profile?.role === 'engineer' ? 'My Assigned Jobs' : 'Service Requests'}
+            {profile?.role === 'engineer' ? 'My Assigned Jobs' : isLogistics ? 'Shipping & Logistics' : 'Service Requests'}
           </h1>
           <p className="text-muted-foreground mt-1">
-            {profile?.role === 'engineer' ? 'View and manage your assigned service requests' : 'Track and manage drone repairs'}
+            {profile?.role === 'engineer' ? 'View and manage your assigned service requests' 
+             : isLogistics ? 'Manage shipping and delivery tracking for service requests'
+             : 'Track and manage drone repairs'}
           </p>
         </div>
 
@@ -135,7 +149,7 @@ export default function ServiceRequestsPage() {
           data-testid="button-tab-open"
         >
           <FolderOpen className="h-4 w-4 mr-2" />
-          {profile?.role === 'engineer' ? 'Open Jobs' : 'Open Requests'}
+          {profile?.role === 'engineer' ? 'Open Jobs' : isLogistics ? 'Pending Shipments' : 'Open Requests'}
           <Badge variant="secondary" className="ml-2 no-default-hover-elevate no-default-active-elevate">
             {isLoading ? "..." : openRequests.length}
           </Badge>
@@ -146,7 +160,7 @@ export default function ServiceRequestsPage() {
           data-testid="button-tab-closed"
         >
           <FolderClosed className="h-4 w-4 mr-2" />
-          {profile?.role === 'engineer' ? 'Closed Jobs' : 'Closed Requests'}
+          {profile?.role === 'engineer' ? 'Closed Jobs' : isLogistics ? 'Shipped / Delivered' : 'Closed Requests'}
           <Badge variant="secondary" className="ml-2 no-default-hover-elevate no-default-active-elevate">
             {isLoading ? "..." : closedRequests.length}
           </Badge>
@@ -190,6 +204,21 @@ export default function ServiceRequestsPage() {
                   <SelectItem value="L3">L3</SelectItem>
                 </SelectContent>
               </Select>
+              {isLogistics && (
+                <Select value={shippingFilter} onValueChange={setShippingFilter}>
+                  <SelectTrigger className="w-[160px]" data-testid="select-filter-shipping">
+                    <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Shipping</SelectItem>
+                    <SelectItem value="not_shipped">Not Shipped</SelectItem>
+                    <SelectItem value="shipped">Shipped</SelectItem>
+                    <SelectItem value="in_transit">In Transit</SelectItem>
+                    <SelectItem value="delivered">Delivered</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -219,29 +248,33 @@ export default function ServiceRequestsPage() {
                     </div>
                   </TableHead>
                   <TableHead>Status</TableHead>
+                  {isLogistics && <TableHead>Shipping Status</TableHead>}
+                  {isLogistics && <TableHead>Courier / Docket</TableHead>}
                   <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("aging")} data-testid="sort-aging">
                     <div className="flex items-center gap-1">
                       Aging
                       <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
                     </div>
                   </TableHead>
-                  <TableHead>Assigned To</TableHead>
+                  {!isLogistics && <TableHead>Assigned To</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   Array(5).fill(0).map((_, i) => (
                     <TableRow key={i}>
-                      {Array(8).fill(0).map((_, j) => (
+                      {Array(isLogistics ? 9 : 8).fill(0).map((_, j) => (
                         <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse w-full" /></TableCell>
                       ))}
                     </TableRow>
                   ))
                 ) : filteredRequests.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-12 text-muted-foreground" data-testid="text-empty-state">
+                    <TableCell colSpan={isLogistics ? 9 : 8} className="text-center py-12 text-muted-foreground" data-testid="text-empty-state">
                       {profile?.role === 'engineer'
                         ? (activeTab === "open" ? "No jobs assigned to you yet." : "No completed jobs yet.")
+                        : isLogistics
+                        ? (activeTab === "open" ? "No pending shipments" : "No shipped/delivered requests")
                         : (activeTab === "open" ? "No open service requests" : "No closed service requests")}
                     </TableCell>
                   </TableRow>
@@ -284,17 +317,53 @@ export default function ServiceRequestsPage() {
                             {req.status.replace('_', ' ')}
                           </Badge>
                         </TableCell>
+                        {isLogistics && (
+                          <TableCell>
+                            {req.shippingStatus ? (
+                              <Badge 
+                                variant={req.shippingStatus === 'delivered' ? 'default' : 'secondary'} 
+                                className={`text-xs uppercase tracking-wider no-default-hover-elevate no-default-active-elevate ${
+                                  req.shippingStatus === 'delivered' ? 'bg-green-600 hover:bg-green-700' : 
+                                  req.shippingStatus === 'in_transit' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''
+                                }`}
+                                data-testid={`text-shipping-status-${req.id}`}
+                              >
+                                {req.shippingStatus.replace('_', ' ')}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Not shipped</span>
+                            )}
+                          </TableCell>
+                        )}
+                        {isLogistics && (
+                          <TableCell>
+                            <div className="text-sm" data-testid={`text-courier-${req.id}`}>
+                              {req.shippingPartnerName ? (
+                                <div>
+                                  <span className="font-medium">{req.shippingPartnerName}</span>
+                                  {req.docketDetails && (
+                                    <span className="block text-xs text-muted-foreground">{req.docketDetails}</span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
                         <TableCell>
                           <div className="flex items-center gap-1.5 text-sm">
                             <Clock className="h-3 w-3 text-muted-foreground" />
                             <span data-testid={`text-aging-${req.id}`}>{agingLabel}</span>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <span className="text-sm" data-testid={`text-assigned-${req.id}`}>
-                            {req.assignedTo?.name || '-'}
-                          </span>
-                        </TableCell>
+                        {!isLogistics && (
+                          <TableCell>
+                            <span className="text-sm" data-testid={`text-assigned-${req.id}`}>
+                              {req.assignedTo?.name || '-'}
+                            </span>
+                          </TableCell>
+                        )}
                       </TableRow>
                     );
                   })

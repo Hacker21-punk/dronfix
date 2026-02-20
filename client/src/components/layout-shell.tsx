@@ -12,7 +12,8 @@ import {
   Menu,
   X,
   Settings,
-  ChevronRight
+  ChevronRight,
+  Truck
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./ui/button";
@@ -28,9 +29,10 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   const role = profile?.role || "engineer"; 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  const isLogistics = role === 'logistics';
   const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'engineer', 'account', 'logistics'] },
-    { name: 'Service Requests', href: '/requests', icon: Wrench, roles: ['admin', 'engineer', 'account', 'logistics'] },
+    { name: isLogistics ? 'Shipping & Logistics' : 'Service Requests', href: '/requests', icon: isLogistics ? Truck : Wrench, roles: ['admin', 'engineer', 'account', 'logistics'] },
     { name: 'Billing Data', href: '/billing', icon: Receipt, roles: ['admin', 'account'] },
     { name: 'Inventory', href: '/inventory', icon: Package, roles: ['admin'] },
     { name: 'Users', href: '/users', icon: Users, roles: ['admin'] },

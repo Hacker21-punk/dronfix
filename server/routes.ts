@@ -142,22 +142,12 @@ export async function registerRoutes(
 
   // === Service Requests ===
   app.get(api.serviceRequests.list.path, async (req: any, res) => {
-    // If engineer, show only assigned? Or all?
-    // Requirement: "View assigned service requests"
     const requests = await storage.getAllServiceRequests();
     
     if (req.user) {
        const userId = req.user.claims.sub;
        const profile = await storage.getProfile(userId);
        if (profile && profile.role === "engineer") {
-         // Filter assigned
-         // For now, return all, frontend can filter or we implement filtering here.
-         // Let's return all for simplicity or filter in DB.
-         // Since getAllServiceRequests returns all, let's just return all for Admin/Account.
-         // For Engineer, strictly speaking should filter.
-         // Let's filter in memory for now.
-         const assignedRequests = requests.filter(r => r.assignedToId === userId || !r.assignedToId); // Show unassigned too so they can pick? Or Admin assigns?
-         // Admin creates and assigns.
          const myRequests = requests.filter(r => r.assignedToId === userId);
          return res.json(myRequests);
        }
