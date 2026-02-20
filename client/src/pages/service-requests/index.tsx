@@ -3,9 +3,9 @@ import { useCurrentUser, useUsers } from "@/hooks/use-users";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Clock, User, MapPin, FolderOpen, FolderClosed } from "lucide-react";
+import { Plus, Search, Clock, User, MapPin, FolderOpen, FolderClosed, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link } from "wouter";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle
@@ -185,6 +185,9 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const { mutate, isPending } = useCreateServiceRequest();
   const { data: users } = useUsers();
   const engineers = users?.filter(u => u.role === 'engineer') || [];
+  const [pincodeStatus, setPincodeStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [pincodeMsg, setPincodeMsg] = useState("");
+
   const form = useForm({
     resolver: zodResolver(insertServiceRequestSchema),
     defaultValues: {
@@ -192,6 +195,7 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       droneNo: "",
       droneSerial: "",
       pilotAddress: "",
+      pincode: "",
       state: "",
       district: "",
       contactDetails: "",
@@ -202,6 +206,44 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     }
   });
 
+  const lookupPincode = useCallback(async (pincode: string) => {
+    if (!/^\d{6}$/.test(pincode)) {
+      if (pincode.length > 0 && pincode.length < 6) {
+        setPincodeStatus("idle");
+        setPincodeMsg("");
+      }
+      return;
+    }
+    setPincodeStatus("loading");
+    setPincodeMsg("");
+    try {
+      const res = await fetch(`/api/pincode/${pincode}`);
+      const data = await res.json();
+      if (data.success) {
+        form.setValue("state", data.state, { shouldValidate: true });
+        form.setValue("district", data.district, { shouldValidate: true });
+        setPincodeStatus("success");
+        setPincodeMsg(`${data.district}, ${data.state}`);
+      } else {
+        setPincodeStatus("error");
+        setPincodeMsg("Pincode not found");
+      }
+    } catch {
+      setPincodeStatus("error");
+      setPincodeMsg("Lookup failed");
+    }
+  }, [form]);
+
+  const pincodeValue = form.watch("pincode");
+  useEffect(() => {
+    if (pincodeValue && pincodeValue.length === 6) {
+      lookupPincode(pincodeValue);
+    } else {
+      setPincodeStatus("idle");
+      setPincodeMsg("");
+    }
+  }, [pincodeValue, lookupPincode]);
+
   const onSubmit = (data: any) => {
     const submitData = { ...data };
     if (!submitData.assignedToId) {
@@ -210,6 +252,8 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     mutate(submitData, {
       onSuccess: () => {
         form.reset();
+        setPincodeStatus("idle");
+        setPincodeMsg("");
         onOpenChange(false);
       }
     });
@@ -240,14 +284,36 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             <Input {...form.register("pilotAddress")} data-testid="input-address" />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Pincode</Label>
+              <div className="relative">
+                <Input
+                  {...form.register("pincode")}
+                  placeholder="e.g. 462001"
+                  maxLength={6}
+                  inputMode="numeric"
+                  data-testid="input-pincode"
+                />
+                <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                  {pincodeStatus === "loading" && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                  {pincodeStatus === "success" && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                  {pincodeStatus === "error" && <XCircle className="h-4 w-4 text-destructive" />}
+                </div>
+              </div>
+              {pincodeMsg && (
+                <p className={`text-xs ${pincodeStatus === "success" ? "text-green-600 dark:text-green-400" : "text-destructive"}`} data-testid="text-pincode-result">
+                  {pincodeMsg}
+                </p>
+              )}
+            </div>
             <div className="space-y-2">
               <Label>State</Label>
-              <Input {...form.register("state")} placeholder="e.g. Madhya Pradesh" data-testid="input-state" />
+              <Input {...form.register("state")} placeholder="Auto-filled from pincode" data-testid="input-state" />
             </div>
             <div className="space-y-2">
               <Label>District</Label>
-              <Input {...form.register("district")} placeholder="e.g. Bhopal" data-testid="input-district" />
+              <Input {...form.register("district")} placeholder="Auto-filled from pincode" data-testid="input-district" />
             </div>
           </div>
 

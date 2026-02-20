@@ -114,9 +114,9 @@ export default function ServiceRequestDetail() {
                    <p className="font-medium text-lg">{request.pilotName}</p>
                    <p className="text-sm">{request.contactDetails}</p>
                    <p className="text-sm text-muted-foreground">{request.pilotAddress}</p>
-                   {(request.state || request.district) && (
+                   {(request.state || request.district || request.pincode) && (
                      <p className="text-sm text-muted-foreground">
-                       {[request.district, request.state].filter(Boolean).join(', ')}
+                       {[request.district, request.state, request.pincode ? `- ${request.pincode}` : ''].filter(Boolean).join(', ')}
                      </p>
                    )}
                 </div>

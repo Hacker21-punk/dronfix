@@ -646,5 +646,32 @@ export async function registerRoutes(
     }
   });
 
+  // === Pincode Lookup (India Post API) ===
+  app.get("/api/pincode/:pincode", async (req, res) => {
+    const { pincode } = req.params;
+    if (!/^\d{6}$/.test(pincode)) {
+      return res.status(400).json({ message: "Invalid pincode. Must be 6 digits." });
+    }
+    try {
+      const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+      const data = await response.json();
+      if (data && data[0] && data[0].Status === "Success" && data[0].PostOffice?.length > 0) {
+        const postOffices = data[0].PostOffice;
+        const state = postOffices[0].State;
+        const district = postOffices[0].District;
+        const areas = postOffices.map((po: any) => ({
+          name: po.Name,
+          block: po.Block,
+          division: po.Division,
+        }));
+        return res.json({ success: true, state, district, areas, pincode });
+      }
+      return res.json({ success: false, message: "Pincode not found" });
+    } catch (err) {
+      console.error("Pincode lookup error:", err);
+      return res.status(500).json({ success: false, message: "Failed to lookup pincode" });
+    }
+  });
+
   return httpServer;
 }
