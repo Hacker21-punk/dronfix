@@ -232,7 +232,7 @@ export function useAddExpense() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: number; date: string; description: string; amount: string; billStatus: boolean; billImageUrl?: string | null; onlineSlip: boolean; onlineSlipImageUrl?: string | null; modeOfTravel: string; baseLocation: string }) => {
+    mutationFn: async ({ id, ...data }: { id: number; date: string; description: string; amount: string; billStatus: boolean; billImageUrl?: string | null; onlineSlip: boolean; onlineSlipImageUrl?: string | null; modeOfTravel: string; baseLocation: string; remark?: string | null }) => {
       const res = await fetch(`/api/service-requests/${id}/expenses`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -248,6 +248,34 @@ export function useAddExpense() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['/api/service-requests', variables.id, 'expenses'] });
       toast({ title: "Success", description: "Expense added" });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
+export function useUpdateExpense() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ requestId, expenseId, ...data }: { requestId: number; expenseId: number; date: string; description: string; amount: string; billStatus: boolean; billImageUrl?: string | null; onlineSlip: boolean; onlineSlipImageUrl?: string | null; modeOfTravel: string; baseLocation: string; remark?: string | null }) => {
+      const res = await fetch(`/api/service-requests/${requestId}/expenses/${expenseId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to update expense");
+      }
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/service-requests', variables.requestId, 'expenses'] });
+      toast({ title: "Success", description: "Expense updated" });
     },
     onError: (err) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });

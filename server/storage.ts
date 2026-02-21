@@ -41,6 +41,7 @@ export interface IStorage {
   // Engineer Expenses
   getExpenses(serviceRequestId: number): Promise<EngineerExpense[]>;
   addExpense(expense: InsertEngineerExpense): Promise<EngineerExpense>;
+  updateExpense(id: number, data: Partial<InsertEngineerExpense>): Promise<EngineerExpense | undefined>;
   deleteExpense(id: number): Promise<void>;
   
   // Dashboard
@@ -240,6 +241,11 @@ export class DatabaseStorage implements IStorage {
   async addExpense(expense: InsertEngineerExpense): Promise<EngineerExpense> {
     const [newExpense] = await db.insert(engineerExpenses).values(expense).returning();
     return newExpense;
+  }
+
+  async updateExpense(id: number, data: Partial<InsertEngineerExpense>): Promise<EngineerExpense | undefined> {
+    const [updated] = await db.update(engineerExpenses).set(data).where(eq(engineerExpenses.id, id)).returning();
+    return updated;
   }
 
   async deleteExpense(id: number): Promise<void> {

@@ -250,6 +250,7 @@ export async function registerRoutes(
         onlineSlipImageUrl: z.string().nullable().optional(),
         modeOfTravel: z.enum(["Train", "Bus", "Auto", "Flight"]),
         baseLocation: z.string().min(1),
+        remark: z.string().nullable().optional(),
       }).parse(req.body);
 
       if (data.billStatus && !data.billImageUrl) {
@@ -274,8 +275,66 @@ export async function registerRoutes(
         modeOfPayment,
         modeOfTravel: data.modeOfTravel,
         baseLocation: data.baseLocation,
+        remark: data.remark || null,
       });
       res.status(201).json(expense);
+    } catch (e: any) {
+      if (e instanceof z.ZodError) {
+        return res.status(400).json({ message: e.errors[0].message });
+      }
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.put("/api/service-requests/:id/expenses/:expenseId", async (req: any, res) => {
+    try {
+      if (!req.isAuthenticated || !req.isAuthenticated()) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      const userId = req.user?.claims?.sub;
+      const profile = userId ? await storage.getProfile(userId) : null;
+      if (!profile || profile.role !== 'engineer') {
+        return res.status(403).json({ message: "Only engineers can edit expenses" });
+      }
+
+      const expenseId = parseInt(req.params.expenseId);
+      const data = z.object({
+        date: z.string(),
+        description: z.string().min(1),
+        amount: z.string(),
+        billStatus: z.boolean(),
+        billImageUrl: z.string().nullable().optional(),
+        onlineSlip: z.boolean(),
+        onlineSlipImageUrl: z.string().nullable().optional(),
+        modeOfTravel: z.enum(["Train", "Bus", "Auto", "Flight"]),
+        baseLocation: z.string().min(1),
+        remark: z.string().nullable().optional(),
+      }).parse(req.body);
+
+      if (data.billStatus && !data.billImageUrl) {
+        return res.status(400).json({ message: "Bill image is required when bill status is YES" });
+      }
+      if (data.onlineSlip && !data.onlineSlipImageUrl) {
+        return res.status(400).json({ message: "Online slip image is required when online slip is YES" });
+      }
+
+      const modeOfPayment = data.onlineSlip ? "Online" : "Cash";
+
+      const updated = await storage.updateExpense(expenseId, {
+        date: new Date(data.date),
+        description: data.description,
+        amount: data.amount,
+        billStatus: data.billStatus,
+        billImageUrl: data.billStatus ? (data.billImageUrl || null) : null,
+        onlineSlip: data.onlineSlip,
+        onlineSlipImageUrl: data.onlineSlip ? (data.onlineSlipImageUrl || null) : null,
+        modeOfPayment,
+        modeOfTravel: data.modeOfTravel,
+        baseLocation: data.baseLocation,
+        remark: data.remark || null,
+      });
+      if (!updated) return res.status(404).json({ message: "Expense not found" });
+      res.json(updated);
     } catch (e: any) {
       if (e instanceof z.ZodError) {
         return res.status(400).json({ message: e.errors[0].message });
@@ -705,6 +764,7 @@ export async function registerRoutes(
           addFieldRow(doc, 'Mode of Payment', exp.modeOfPayment || '-');
           addFieldRow(doc, 'Mode of Travel', exp.modeOfTravel || '-');
           addFieldRow(doc, 'Base Location', exp.baseLocation || '-');
+          if (exp.remark) addFieldRow(doc, 'Remark', exp.remark);
           doc.moveTo(50, doc.y + 2).lineTo(545, doc.y + 2).strokeColor('#eeeeee').lineWidth(0.5).stroke();
           doc.moveDown(0.4);
         });

@@ -119,6 +119,7 @@ export const engineerExpenses = pgTable("engineer_expenses", {
   modeOfPayment: text("mode_of_payment").notNull().default("Cash"),
   modeOfTravel: modeOfTravelEnum("mode_of_travel").notNull(),
   baseLocation: text("base_location").notNull(),
+  remark: text("remark"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

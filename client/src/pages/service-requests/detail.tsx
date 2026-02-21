@@ -9,6 +9,7 @@ import {
   useSubmitLogistics,
   useExpenses,
   useAddExpense,
+  useUpdateExpense,
   useDeleteExpense
 } from "@/hooks/use-service-requests";
 import { useInventory } from "@/hooks/use-inventory";
@@ -18,7 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, CheckCircle, Upload, Wrench, Download, Camera, User, FileText, ArrowLeft, FolderOpen, Loader2, ZoomIn, X, Truck, Receipt, Plus, Trash2, IndianRupee
+  Calendar, CheckCircle, Upload, Wrench, Download, Camera, User, FileText, ArrowLeft, FolderOpen, Loader2, ZoomIn, X, Truck, Receipt, Plus, Trash2, IndianRupee, Pencil
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -982,8 +983,10 @@ const INDIAN_STATES = [
 function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { requestId: number; droneNo: string; baseLocation: string }) {
   const { data: expenses, isLoading } = useExpenses(requestId);
   const addExpenseMutation = useAddExpense();
+  const updateExpenseMutation = useUpdateExpense();
   const deleteExpenseMutation = useDeleteExpense();
-  const [addOpen, setAddOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<EngineerExpense | null>(null);
 
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [description, setDescription] = useState("");
@@ -994,6 +997,7 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
   const [onlineSlipImageUrl, setOnlineSlipImageUrl] = useState<string | null>(null);
   const [modeOfTravel, setModeOfTravel] = useState("");
   const [expBaseLocation, setExpBaseLocation] = useState(baseLocation || "");
+  const [remark, setRemark] = useState("");
   const [billCameraOpen, setBillCameraOpen] = useState(false);
   const [slipCameraOpen, setSlipCameraOpen] = useState(false);
 
@@ -1020,16 +1024,39 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
     setOnlineSlipImageUrl(null);
     setModeOfTravel("");
     setExpBaseLocation(baseLocation || "");
+    setRemark("");
+    setEditingExpense(null);
+  };
+
+  const openAddDialog = () => {
+    resetForm();
+    setDialogOpen(true);
+  };
+
+  const openEditDialog = (exp: EngineerExpense) => {
+    setEditingExpense(exp);
+    setDate(exp.date ? format(new Date(exp.date), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'));
+    setDescription(exp.description);
+    setAmount(String(exp.amount));
+    setBillStatus(exp.billStatus);
+    setBillImageUrl(exp.billImageUrl || null);
+    setOnlineSlip(exp.onlineSlip);
+    setOnlineSlipImageUrl(exp.onlineSlipImageUrl || null);
+    setModeOfTravel(exp.modeOfTravel);
+    setExpBaseLocation(exp.baseLocation);
+    setRemark(exp.remark || "");
+    setDialogOpen(true);
   };
 
   const canSubmit = description && amount && modeOfTravel && expBaseLocation && date
     && (!billStatus || billImageUrl)
     && (!onlineSlip || onlineSlipImageUrl);
 
+  const isMutating = addExpenseMutation.isPending || updateExpenseMutation.isPending;
+
   const handleSubmit = () => {
     if (!canSubmit) return;
-    addExpenseMutation.mutate({
-      id: requestId,
+    const payload = {
       date,
       description,
       amount,
@@ -1039,15 +1066,179 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
       onlineSlipImageUrl: onlineSlip ? onlineSlipImageUrl : null,
       modeOfTravel,
       baseLocation: expBaseLocation,
-    }, {
-      onSuccess: () => {
-        setAddOpen(false);
-        resetForm();
-      }
-    });
+      remark: remark || null,
+    };
+
+    if (editingExpense) {
+      updateExpenseMutation.mutate({
+        requestId,
+        expenseId: editingExpense.id,
+        ...payload,
+      }, {
+        onSuccess: () => { setDialogOpen(false); resetForm(); }
+      });
+    } else {
+      addExpenseMutation.mutate({
+        id: requestId,
+        ...payload,
+      }, {
+        onSuccess: () => { setDialogOpen(false); resetForm(); }
+      });
+    }
   };
 
   const totalExpenses = (expenses || []).reduce((sum: number, e: EngineerExpense) => sum + Number(e.amount), 0);
+
+  const expenseFormContent = (
+    <div className="space-y-4 py-2">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Date *</Label>
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="input-expense-date" />
+        </div>
+        <div>
+          <Label>Amount (₹) *</Label>
+          <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" data-testid="input-expense-amount" />
+        </div>
+      </div>
+      <div>
+        <Label>Description *</Label>
+        <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Travel to site, food, stay etc." data-testid="input-expense-description" />
+      </div>
+      <div>
+        <Label>Mode of Travel *</Label>
+        <Select value={modeOfTravel} onValueChange={setModeOfTravel}>
+          <SelectTrigger data-testid="select-expense-travel"><SelectValue placeholder="Select mode" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Train">Train</SelectItem>
+            <SelectItem value="Bus">Bus</SelectItem>
+            <SelectItem value="Auto">Auto</SelectItem>
+            <SelectItem value="Flight">Flight</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label>Base Location *</Label>
+        <Select value={expBaseLocation} onValueChange={setExpBaseLocation}>
+          <SelectTrigger data-testid="select-expense-location"><SelectValue placeholder="Select state" /></SelectTrigger>
+          <SelectContent>
+            {INDIAN_STATES.map(s => (
+              <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label>Remark</Label>
+        <Input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Any additional notes..." data-testid="input-expense-remark" />
+      </div>
+
+      <Separator />
+
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <Checkbox
+            id="billStatus"
+            checked={billStatus}
+            onCheckedChange={(checked) => {
+              setBillStatus(!!checked);
+              if (!checked) setBillImageUrl(null);
+            }}
+            data-testid="checkbox-bill-status"
+          />
+          <Label htmlFor="billStatus" className="cursor-pointer">Bill Available (YES)</Label>
+        </div>
+        {billStatus && (
+          <div className="ml-7 space-y-2">
+            <p className="text-xs text-muted-foreground">Upload bill image (mandatory) *</p>
+            <div className="flex gap-2">
+              <input
+                ref={billInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleFileUpload(f, 'bill');
+                }}
+              />
+              <Button type="button" variant="outline" size="sm" onClick={() => billInputRef.current?.click()} disabled={isUploading} data-testid="button-bill-upload">
+                <Upload className="h-3.5 w-3.5 mr-1" /> {isUploading ? 'Uploading...' : 'Browse'}
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setBillCameraOpen(true)} disabled={isUploading} data-testid="button-bill-camera">
+                <Camera className="h-3.5 w-3.5 mr-1" /> Camera
+              </Button>
+            </div>
+            {billImageUrl && (
+              <div className="flex items-center gap-2 text-xs text-green-600">
+                <CheckCircle className="h-3.5 w-3.5" /> Bill image uploaded
+                <img src={billImageUrl} alt="bill" className="h-10 w-10 object-cover rounded border ml-2" />
+              </div>
+            )}
+            <CameraCapture
+              open={billCameraOpen}
+              onClose={() => setBillCameraOpen(false)}
+              onCapture={(file) => { handleFileUpload(file, 'bill'); setBillCameraOpen(false); }}
+              isUploading={isUploading}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <Checkbox
+            id="onlineSlip"
+            checked={onlineSlip}
+            onCheckedChange={(checked) => {
+              setOnlineSlip(!!checked);
+              if (!checked) setOnlineSlipImageUrl(null);
+            }}
+            data-testid="checkbox-online-slip"
+          />
+          <Label htmlFor="onlineSlip" className="cursor-pointer">Online Slip Available (YES)</Label>
+        </div>
+        <div className="ml-7 text-xs text-muted-foreground">
+          Mode of Payment: <Badge variant="secondary" className="ml-1 no-default-hover-elevate no-default-active-elevate">{onlineSlip ? "Online" : "Cash"}</Badge>
+        </div>
+        {onlineSlip && (
+          <div className="ml-7 space-y-2">
+            <p className="text-xs text-muted-foreground">Upload online slip image (mandatory) *</p>
+            <div className="flex gap-2">
+              <input
+                ref={slipInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleFileUpload(f, 'slip');
+                }}
+              />
+              <Button type="button" variant="outline" size="sm" onClick={() => slipInputRef.current?.click()} disabled={isUploading} data-testid="button-slip-upload">
+                <Upload className="h-3.5 w-3.5 mr-1" /> {isUploading ? 'Uploading...' : 'Browse'}
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setSlipCameraOpen(true)} disabled={isUploading} data-testid="button-slip-camera">
+                <Camera className="h-3.5 w-3.5 mr-1" /> Camera
+              </Button>
+            </div>
+            {onlineSlipImageUrl && (
+              <div className="flex items-center gap-2 text-xs text-green-600">
+                <CheckCircle className="h-3.5 w-3.5" /> Online slip uploaded
+                <img src={onlineSlipImageUrl} alt="slip" className="h-10 w-10 object-cover rounded border ml-2" />
+              </div>
+            )}
+            <CameraCapture
+              open={slipCameraOpen}
+              onClose={() => setSlipCameraOpen(false)}
+              onCapture={(file) => { handleFileUpload(file, 'slip'); setSlipCameraOpen(false); }}
+              isUploading={isUploading}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <Card data-testid="card-engineer-expenses">
@@ -1059,166 +1250,21 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
             </CardTitle>
             <p className="text-sm text-muted-foreground mt-1">Drone No: <span className="font-mono font-medium text-foreground">{droneNo}</span></p>
           </div>
-          <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) resetForm(); }}>
-            <DialogTrigger asChild>
-              <Button size="sm" data-testid="button-add-expense">
-                <Plus className="h-4 w-4 mr-1" /> Add Expense
-              </Button>
-            </DialogTrigger>
+          <Button size="sm" onClick={openAddDialog} data-testid="button-add-expense">
+            <Plus className="h-4 w-4 mr-1" /> Add Expense
+          </Button>
+          <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
             <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Add Expense</DialogTitle></DialogHeader>
-              <div className="space-y-4 py-2">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Date *</Label>
-                    <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="input-expense-date" />
-                  </div>
-                  <div>
-                    <Label>Amount (₹) *</Label>
-                    <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" data-testid="input-expense-amount" />
-                  </div>
-                </div>
-                <div>
-                  <Label>Description *</Label>
-                  <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Travel to site, food, stay etc." data-testid="input-expense-description" />
-                </div>
-                <div>
-                  <Label>Mode of Travel *</Label>
-                  <Select value={modeOfTravel} onValueChange={setModeOfTravel}>
-                    <SelectTrigger data-testid="select-expense-travel"><SelectValue placeholder="Select mode" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Train">Train</SelectItem>
-                      <SelectItem value="Bus">Bus</SelectItem>
-                      <SelectItem value="Auto">Auto</SelectItem>
-                      <SelectItem value="Flight">Flight</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Base Location *</Label>
-                  <Select value={expBaseLocation} onValueChange={setExpBaseLocation}>
-                    <SelectTrigger data-testid="select-expense-location"><SelectValue placeholder="Select state" /></SelectTrigger>
-                    <SelectContent>
-                      {INDIAN_STATES.map(s => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Separator />
-
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Checkbox
-                      id="billStatus"
-                      checked={billStatus}
-                      onCheckedChange={(checked) => {
-                        setBillStatus(!!checked);
-                        if (!checked) setBillImageUrl(null);
-                      }}
-                      data-testid="checkbox-bill-status"
-                    />
-                    <Label htmlFor="billStatus" className="cursor-pointer">Bill Available (YES)</Label>
-                  </div>
-                  {billStatus && (
-                    <div className="ml-7 space-y-2">
-                      <p className="text-xs text-muted-foreground">Upload bill image (mandatory) *</p>
-                      <div className="flex gap-2">
-                        <input
-                          ref={billInputRef}
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) handleFileUpload(f, 'bill');
-                          }}
-                        />
-                        <Button type="button" variant="outline" size="sm" onClick={() => billInputRef.current?.click()} disabled={isUploading} data-testid="button-bill-upload">
-                          <Upload className="h-3.5 w-3.5 mr-1" /> {isUploading ? 'Uploading...' : 'Browse'}
-                        </Button>
-                        <Button type="button" variant="outline" size="sm" onClick={() => setBillCameraOpen(true)} disabled={isUploading} data-testid="button-bill-camera">
-                          <Camera className="h-3.5 w-3.5 mr-1" /> Camera
-                        </Button>
-                      </div>
-                      {billImageUrl && (
-                        <div className="flex items-center gap-2 text-xs text-green-600">
-                          <CheckCircle className="h-3.5 w-3.5" /> Bill image uploaded
-                          <img src={billImageUrl} alt="bill" className="h-10 w-10 object-cover rounded border ml-2" />
-                        </div>
-                      )}
-                      <CameraCapture
-                        open={billCameraOpen}
-                        onClose={() => setBillCameraOpen(false)}
-                        onCapture={(file) => { handleFileUpload(file, 'bill'); setBillCameraOpen(false); }}
-                        isUploading={isUploading}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Checkbox
-                      id="onlineSlip"
-                      checked={onlineSlip}
-                      onCheckedChange={(checked) => {
-                        setOnlineSlip(!!checked);
-                        if (!checked) setOnlineSlipImageUrl(null);
-                      }}
-                      data-testid="checkbox-online-slip"
-                    />
-                    <Label htmlFor="onlineSlip" className="cursor-pointer">Online Slip Available (YES)</Label>
-                  </div>
-                  <div className="ml-7 text-xs text-muted-foreground">
-                    Mode of Payment: <Badge variant="secondary" className="ml-1 no-default-hover-elevate no-default-active-elevate">{onlineSlip ? "Online" : "Cash"}</Badge>
-                  </div>
-                  {onlineSlip && (
-                    <div className="ml-7 space-y-2">
-                      <p className="text-xs text-muted-foreground">Upload online slip image (mandatory) *</p>
-                      <div className="flex gap-2">
-                        <input
-                          ref={slipInputRef}
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) handleFileUpload(f, 'slip');
-                          }}
-                        />
-                        <Button type="button" variant="outline" size="sm" onClick={() => slipInputRef.current?.click()} disabled={isUploading} data-testid="button-slip-upload">
-                          <Upload className="h-3.5 w-3.5 mr-1" /> {isUploading ? 'Uploading...' : 'Browse'}
-                        </Button>
-                        <Button type="button" variant="outline" size="sm" onClick={() => setSlipCameraOpen(true)} disabled={isUploading} data-testid="button-slip-camera">
-                          <Camera className="h-3.5 w-3.5 mr-1" /> Camera
-                        </Button>
-                      </div>
-                      {onlineSlipImageUrl && (
-                        <div className="flex items-center gap-2 text-xs text-green-600">
-                          <CheckCircle className="h-3.5 w-3.5" /> Online slip uploaded
-                          <img src={onlineSlipImageUrl} alt="slip" className="h-10 w-10 object-cover rounded border ml-2" />
-                        </div>
-                      )}
-                      <CameraCapture
-                        open={slipCameraOpen}
-                        onClose={() => setSlipCameraOpen(false)}
-                        onCapture={(file) => { handleFileUpload(file, 'slip'); setSlipCameraOpen(false); }}
-                        isUploading={isUploading}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
+              <DialogHeader><DialogTitle>{editingExpense ? 'Edit Expense' : 'Add Expense'}</DialogTitle></DialogHeader>
+              {expenseFormContent}
               <Button
                 onClick={handleSubmit}
-                disabled={!canSubmit || addExpenseMutation.isPending}
+                disabled={!canSubmit || isMutating}
                 className="w-full"
                 data-testid="button-submit-expense"
               >
-                {addExpenseMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
-                Add Expense
+                {isMutating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : editingExpense ? <CheckCircle className="h-4 w-4 mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                {editingExpense ? 'Update Expense' : 'Add Expense'}
               </Button>
             </DialogContent>
           </Dialog>
@@ -1252,7 +1298,8 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
                     <TableHead>Payment</TableHead>
                     <TableHead>Travel</TableHead>
                     <TableHead>Base Location</TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
+                    <TableHead>Remark</TableHead>
+                    <TableHead className="w-[80px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1293,17 +1340,29 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
                       </TableCell>
                       <TableCell className="text-sm">{exp.modeOfTravel}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">{exp.baseLocation}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate">{exp.remark || '-'}</TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => deleteExpenseMutation.mutate({ requestId, expenseId: exp.id })}
-                          disabled={deleteExpenseMutation.isPending}
-                          data-testid={`button-delete-expense-${exp.id}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-primary hover:text-primary hover:bg-primary/10"
+                            onClick={() => openEditDialog(exp)}
+                            data-testid={`button-edit-expense-${exp.id}`}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => deleteExpenseMutation.mutate({ requestId, expenseId: exp.id })}
+                            disabled={deleteExpenseMutation.isPending}
+                            data-testid={`button-delete-expense-${exp.id}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
