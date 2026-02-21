@@ -11,6 +11,7 @@ export const roleEnum = pgEnum("role", ["admin", "engineer", "account", "logisti
 export const serviceTypeEnum = pgEnum("service_type", ["L1", "L2", "L3"]);
 export const serviceStatusEnum = pgEnum("service_status", ["pending", "accepted", "in_progress", "completed", "billed"]);
 export const shippingStatusEnum = pgEnum("shipping_status", ["shipped", "in_transit", "delivered"]);
+export const modeOfTravelEnum = pgEnum("mode_of_travel", ["Train", "Bus", "Auto", "Flight"]);
 
 // Extend users table with role - we'll do this by defining a separate profile table 
 // or just assuming we can add to the auth schema. 
@@ -104,6 +105,23 @@ export const partsConsumed = pgTable("parts_consumed", {
   recordedAt: timestamp("recorded_at").defaultNow(),
 });
 
+export const engineerExpenses = pgTable("engineer_expenses", {
+  id: serial("id").primaryKey(),
+  serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
+  engineerId: text("engineer_id").notNull().references(() => users.id),
+  date: timestamp("date").notNull(),
+  description: text("description").notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  billStatus: boolean("bill_status").notNull().default(false),
+  billImageUrl: text("bill_image_url"),
+  onlineSlip: boolean("online_slip").notNull().default(false),
+  onlineSlipImageUrl: text("online_slip_image_url"),
+  modeOfPayment: text("mode_of_payment").notNull().default("Cash"),
+  modeOfTravel: modeOfTravelEnum("mode_of_travel").notNull(),
+  baseLocation: text("base_location").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Relations
 export const profilesRelations = relations(profiles, ({ one }) => ({
   user: one(users, {
@@ -119,6 +137,14 @@ export const serviceRequestsRelations = relations(serviceRequests, ({ one, many 
   }),
   images: many(serviceImages),
   partsConsumed: many(partsConsumed),
+  expenses: many(engineerExpenses),
+}));
+
+export const engineerExpensesRelations = relations(engineerExpenses, ({ one }) => ({
+  serviceRequest: one(serviceRequests, {
+    fields: [engineerExpenses.serviceRequestId],
+    references: [serviceRequests.id],
+  }),
 }));
 
 export const serviceImagesRelations = relations(serviceImages, ({ one }) => ({
@@ -149,6 +175,7 @@ export const insertServiceRequestSchema = createInsertSchema(serviceRequests).om
 });
 export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true });
 export const insertPartsConsumedSchema = createInsertSchema(partsConsumed).omit({ id: true, recordedAt: true });
+export const insertEngineerExpenseSchema = createInsertSchema(engineerExpenses).omit({ id: true, createdAt: true });
 
 // Types
 export type Inventory = typeof inventory.$inferSelect;
@@ -158,6 +185,8 @@ export type InsertServiceRequest = z.infer<typeof insertServiceRequestSchema>;
 export type Profile = typeof profiles.$inferSelect;
 export type ServiceImage = typeof serviceImages.$inferSelect;
 export type PartConsumed = typeof partsConsumed.$inferSelect;
+export type EngineerExpense = typeof engineerExpenses.$inferSelect;
+export type InsertEngineerExpense = z.infer<typeof insertEngineerExpenseSchema>;
 
 // Custom types for API
 export type CreateServiceRequest = z.infer<typeof insertServiceRequestSchema>;

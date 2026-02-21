@@ -217,6 +217,92 @@ export async function registerRoutes(
     }
   });
 
+  // === Engineer Expenses ===
+  app.get("/api/service-requests/:id/expenses", async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const expenses = await storage.getExpenses(id);
+      res.json(expenses);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/service-requests/:id/expenses", async (req: any, res) => {
+    try {
+      if (!req.isAuthenticated || !req.isAuthenticated()) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      const userId = req.user?.claims?.sub;
+      const profile = userId ? await storage.getProfile(userId) : null;
+      if (!profile || profile.role !== 'engineer') {
+        return res.status(403).json({ message: "Only engineers can add expenses" });
+      }
+
+      const id = parseInt(req.params.id);
+      const data = z.object({
+        date: z.string(),
+        description: z.string().min(1),
+        amount: z.string(),
+        billStatus: z.boolean(),
+        billImageUrl: z.string().nullable().optional(),
+        onlineSlip: z.boolean(),
+        onlineSlipImageUrl: z.string().nullable().optional(),
+        modeOfTravel: z.enum(["Train", "Bus", "Auto", "Flight"]),
+        baseLocation: z.string().min(1),
+      }).parse(req.body);
+
+      if (data.billStatus && !data.billImageUrl) {
+        return res.status(400).json({ message: "Bill image is required when bill status is YES" });
+      }
+      if (data.onlineSlip && !data.onlineSlipImageUrl) {
+        return res.status(400).json({ message: "Online slip image is required when online slip is YES" });
+      }
+
+      const modeOfPayment = data.onlineSlip ? "Online" : "Cash";
+
+      const expense = await storage.addExpense({
+        serviceRequestId: id,
+        engineerId: userId,
+        date: new Date(data.date),
+        description: data.description,
+        amount: data.amount,
+        billStatus: data.billStatus,
+        billImageUrl: data.billStatus ? (data.billImageUrl || null) : null,
+        onlineSlip: data.onlineSlip,
+        onlineSlipImageUrl: data.onlineSlip ? (data.onlineSlipImageUrl || null) : null,
+        modeOfPayment,
+        modeOfTravel: data.modeOfTravel,
+        baseLocation: data.baseLocation,
+      });
+      res.status(201).json(expense);
+    } catch (e: any) {
+      if (e instanceof z.ZodError) {
+        return res.status(400).json({ message: e.errors[0].message });
+      }
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.delete("/api/service-requests/:id/expenses/:expenseId", async (req: any, res) => {
+    try {
+      if (!req.isAuthenticated || !req.isAuthenticated()) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      const userId = req.user?.claims?.sub;
+      const profile = userId ? await storage.getProfile(userId) : null;
+      if (!profile || profile.role !== 'engineer') {
+        return res.status(403).json({ message: "Only engineers can delete expenses" });
+      }
+
+      const expenseId = parseInt(req.params.expenseId);
+      await storage.deleteExpense(expenseId);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // === Dashboard ===
   app.get(api.reports.dashboard.path, async (req: any, res) => {
     let engineerId: string | undefined;
@@ -595,6 +681,38 @@ export async function registerRoutes(
         doc.text('No parts consumed.');
       }
       doc.moveDown(0.5);
+
+      // ===== ENGINEER EXPENSES =====
+      const expenses = await storage.getExpenses(id);
+      if (expenses && expenses.length > 0) {
+        addSectionHeader(doc, 'Engineer Expenses');
+        doc.fontSize(9);
+
+        let totalExpenses = 0;
+        expenses.forEach((exp: any, idx: number) => {
+          totalExpenses += parseFloat(exp.amount) || 0;
+          if (doc.y > 680) doc.addPage();
+
+          doc.font('Helvetica-Bold').fontSize(10);
+          doc.text(`Expense #${idx + 1}`, 50, doc.y);
+          doc.moveDown(0.2);
+          doc.font('Helvetica').fontSize(9);
+          addFieldRow(doc, 'Date', exp.date ? new Date(exp.date).toLocaleDateString('en-IN') : '-');
+          addFieldRow(doc, 'Description', exp.description || '-');
+          addFieldRow(doc, 'Amount', `₹${(parseFloat(exp.amount) || 0).toFixed(2)}`);
+          addFieldRow(doc, 'Bill Status', exp.billStatus ? 'YES' : 'NO');
+          addFieldRow(doc, 'Online Slip', exp.onlineSlip ? 'YES' : 'NO');
+          addFieldRow(doc, 'Mode of Payment', exp.modeOfPayment || '-');
+          addFieldRow(doc, 'Mode of Travel', exp.modeOfTravel || '-');
+          addFieldRow(doc, 'Base Location', exp.baseLocation || '-');
+          doc.moveTo(50, doc.y + 2).lineTo(545, doc.y + 2).strokeColor('#eeeeee').lineWidth(0.5).stroke();
+          doc.moveDown(0.4);
+        });
+        doc.moveDown(0.3);
+        doc.font('Helvetica-Bold').fontSize(10).text(`Total Expenses: ₹${totalExpenses.toFixed(2)}`, { align: 'right' });
+        doc.font('Helvetica');
+        doc.moveDown(0.5);
+      }
 
       // ===== AFTER SERVICE IMAGES =====
       const afterImages = request.images?.filter(img => img.type === 'after') || [];

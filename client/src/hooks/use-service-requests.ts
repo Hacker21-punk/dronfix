@@ -215,6 +215,69 @@ export function useSubmitLogistics() {
   });
 }
 
+export function useExpenses(serviceRequestId: number) {
+  return useQuery({
+    queryKey: ['/api/service-requests', serviceRequestId, 'expenses'],
+    queryFn: async () => {
+      const res = await fetch(`/api/service-requests/${serviceRequestId}/expenses`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch expenses");
+      return res.json();
+    },
+    enabled: !!serviceRequestId,
+  });
+}
+
+export function useAddExpense() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: number; date: string; description: string; amount: string; billStatus: boolean; billImageUrl?: string | null; onlineSlip: boolean; onlineSlipImageUrl?: string | null; modeOfTravel: string; baseLocation: string }) => {
+      const res = await fetch(`/api/service-requests/${id}/expenses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to add expense");
+      }
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/service-requests', variables.id, 'expenses'] });
+      toast({ title: "Success", description: "Expense added" });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
+export function useDeleteExpense() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ requestId, expenseId }: { requestId: number; expenseId: number }) => {
+      const res = await fetch(`/api/service-requests/${requestId}/expenses/${expenseId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete expense");
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/service-requests', variables.requestId, 'expenses'] });
+      toast({ title: "Success", description: "Expense removed" });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
 export function useDashboardStats() {
   return useQuery({
     queryKey: [api.reports.dashboard.path],

@@ -1,10 +1,11 @@
 import { db } from "./db";
 import { eq, sql, desc, and, lte } from "drizzle-orm";
 import {
-  users, profiles, inventory, serviceRequests, serviceImages, partsConsumed,
+  users, profiles, inventory, serviceRequests, serviceImages, partsConsumed, engineerExpenses,
   type User, type UpsertUser, type Profile, type InsertInventory, type Inventory,
   type InsertServiceRequest, type ServiceRequest, type insertPartsConsumedSchema,
-  type ServiceImage, type PartConsumed, type UpdateServiceRequest
+  type ServiceImage, type PartConsumed, type UpdateServiceRequest,
+  type EngineerExpense, type InsertEngineerExpense
 } from "@shared/schema";
 
 export interface IStorage {
@@ -36,6 +37,11 @@ export interface IStorage {
   // Parts Consumed
   addPartConsumed(part: any): Promise<PartConsumed>;
   getPartsConsumed(requestId: number): Promise<PartConsumed[]>;
+  
+  // Engineer Expenses
+  getExpenses(serviceRequestId: number): Promise<EngineerExpense[]>;
+  addExpense(expense: InsertEngineerExpense): Promise<EngineerExpense>;
+  deleteExpense(id: number): Promise<void>;
   
   // Dashboard
   getDashboardStats(engineerId?: string): Promise<any>;
@@ -224,6 +230,22 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(partsConsumed).where(eq(partsConsumed.serviceRequestId, requestId));
   }
   
+  // Engineer Expenses
+  async getExpenses(serviceRequestId: number): Promise<EngineerExpense[]> {
+    return await db.select().from(engineerExpenses)
+      .where(eq(engineerExpenses.serviceRequestId, serviceRequestId))
+      .orderBy(desc(engineerExpenses.date));
+  }
+
+  async addExpense(expense: InsertEngineerExpense): Promise<EngineerExpense> {
+    const [newExpense] = await db.insert(engineerExpenses).values(expense).returning();
+    return newExpense;
+  }
+
+  async deleteExpense(id: number): Promise<void> {
+    await db.delete(engineerExpenses).where(eq(engineerExpenses.id, id));
+  }
+
   // Dashboard
   async getDashboardStats(engineerId?: string): Promise<any> {
     const allInventory = await this.getAllInventory();
