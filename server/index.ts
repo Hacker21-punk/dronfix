@@ -112,7 +112,7 @@ res.status(status).json({ message });
 Serve frontend in production
 */
 if (process.env.NODE_ENV === "production") {
-const clientPath = path.join(__dirname, "../dist/public");
+const clientPath = path.resolve(process.cwd(), "dist/public");
 
 app.use(express.static(clientPath));
 
