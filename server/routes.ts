@@ -1,81 +1,175 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { api, errorSchemas } from "@shared/routes";
+import { api } from "@shared/routes";
 import { z } from "zod";
-import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
-import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
-import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import PDFDocument from "pdfkit";
+import { hashPassword, comparePassword, generateToken } from "./auth";
 
-// Helper to check role
+/*
+|--------------------------------------------------------------------------
+| Fake Auth Middleware (Local Dev Only)
+|--------------------------------------------------------------------------
+*/
+
+const fakeAuth = async (req: any, res: any, next: any) => {
+  req.user = {
+    claims: {
+      sub: "local-user",
+      email: "admin@test.com",
+      first_name: "Local",
+      last_name: "Admin",
+    },
+  };
+
+  req.isAuthenticated = () => true;
+
+  next();
+};
+
+/*
+|--------------------------------------------------------------------------
+| Role Middleware
+|--------------------------------------------------------------------------
+*/
+
 const requireRole = (role: string) => {
   return async (req: any, res: any, next: any) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
-    
-    const userId = req.user?.claims?.sub;
-    const profile = await storage.getProfile(userId);
-    
-    if (!profile) return res.status(403).json({ message: "Profile not found" });
-    if (profile.role !== role && profile.role !== "admin") return res.status(403).json({ message: "Forbidden" });
-    
-    req.profile = profile;
-    next();
+    try {
+      const userId = req.user?.claims?.sub;
+
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const profile = await storage.getProfile(userId);
+
+      if (!profile) {
+        return res.status(403).json({ message: "Profile not found" });
+      }
+
+      if (profile.role !== role && profile.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      req.profile = profile;
+
+      next();
+    } catch (err) {
+      console.error("Role middleware error:", err);
+      res.status(500).json({ message: "Authorization error" });
+    }
   };
 };
+
+/*
+|--------------------------------------------------------------------------
+| Utility Helpers
+|--------------------------------------------------------------------------
+*/
+
+function parseId(id: string) {
+  const parsed = parseInt(id);
+  if (isNaN(parsed)) throw new Error("Invalid ID");
+  return parsed;
+}
+
+async function fetchObjectAsBuffer(objectPath: string): Promise<Buffer | null> {
+  try {
+    if (!objectPath) return null;
+
+    if (objectPath.startsWith("http")) {
+      const response = await fetch(objectPath);
+
+      if (!response.ok) return null;
+
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    }
+
+    return null;
+  } catch (err) {
+    console.error("Fetch object error:", err);
+    return null;
+  }
+}
+
+function addSectionHeader(doc: PDFKit.PDFDocument, title: string) {
+  if (doc.y > 680) doc.addPage();
+
+  doc.moveDown(0.5);
+  doc.fontSize(14).fillColor("#1a56db").text(title);
+
+  doc.moveTo(doc.x, doc.y)
+    .lineTo(doc.x + 500, doc.y)
+    .strokeColor("#1a56db")
+    .lineWidth(1)
+    .stroke();
+
+  doc.moveDown(0.5);
+  doc.fillColor("#000");
+  doc.fontSize(10);
+}
+
+function addFieldRow(doc: PDFKit.PDFDocument, label: string, value: string) {
+  doc.font("Helvetica-Bold").text(`${label}: `, { continued: true });
+  doc.font("Helvetica").text(value || "N/A");
+}
+
+/*
+|--------------------------------------------------------------------------
+| Routes Registration
+|--------------------------------------------------------------------------
+*/
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Setup Replit Auth
-  await setupAuth(app);
-  registerAuthRoutes(app);
-  
-  // Setup Object Storage
-  registerObjectStorageRoutes(app);
 
-  // === Auth / Profile ===
+  app.use(fakeAuth);
+
+  /*
+  |--------------------------------------------------------------------------
+  | Profile
+  |--------------------------------------------------------------------------
+  */
+
   app.get(api.auth.me.path, async (req: any, res) => {
-    if (!req.isAuthenticated()) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-    const userId = req.user.claims.sub;
-    let profile = await storage.getProfile(userId);
-    
-    // Auto-link pending profiles by email
-    if (!profile) {
-      const pendingProfile = await storage.getProfileByEmail(req.user.claims.email);
-      if (pendingProfile && !pendingProfile.userId) {
-        const oidcName = `${req.user.claims.first_name || ''} ${req.user.claims.last_name || ''}`.trim();
+    try {
+      const userId = req.user.claims.sub;
+
+      let profile = await storage.getProfile(userId);
+
+      if (!profile) {
+        const allProfiles = await storage.getAllProfiles();
+
+        const role = allProfiles.length === 0 ? "admin" : "engineer";
+
+        const claims = req.user.claims;
+
         profile = await storage.createProfile({
-          id: pendingProfile.id,
-          userId: req.user.claims.sub,
-          name: pendingProfile.name || oidcName || 'User',
+          userId,
+          email: claims.email,
+          name: `${claims.first_name} ${claims.last_name}`,
+          role,
         });
       }
+
+      res.json(profile);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Failed to load profile" });
     }
-    
-    // Auto-create profile if first login (optional, or manual)
-    // For now, if no profile, we create one with role 'engineer' by default or 'admin' if first user
-    if (!profile) {
-      const allProfiles = await storage.getAllProfiles();
-      const role = allProfiles.length === 0 ? "admin" : "engineer";
-      
-      const claims = req.user.claims;
-      profile = await storage.createProfile({
-        userId,
-        email: claims.email,
-        name: `${claims.first_name || ''} ${claims.last_name || ''}`.trim() || claims.email || 'User',
-        role
-      });
-    }
-    
-    res.json(profile);
   });
 
-  // === Inventory ===
-  app.get(api.inventory.list.path, async (req, res) => {
+  /*
+  |--------------------------------------------------------------------------
+  | Inventory
+  |--------------------------------------------------------------------------
+  */
+
+  app.get(api.inventory.list.path, async (_, res) => {
     const items = await storage.getAllInventory();
     res.json(items);
   });
@@ -83,60 +177,169 @@ export async function registerRoutes(
   app.post(api.inventory.create.path, requireRole("admin"), async (req, res) => {
     try {
       const input = api.inventory.create.input.parse(req.body);
+
       const item = await storage.createInventoryItem(input);
+
       res.status(201).json(item);
-    } catch (err) {
+    } catch (err: any) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
+
       res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.put(api.inventory.update.path, requireRole("admin"), async (req, res) => {
-    const id = parseInt(req.params.id);
-    const input = api.inventory.update.input.parse(req.body);
-    const item = await storage.updateInventoryItem(id, input);
-    res.json(item);
+    try {
+      const id = parseId(req.params.id);
+
+      const input = api.inventory.update.input.parse(req.body);
+
+      const item = await storage.updateInventoryItem(id, input);
+
+      res.json(item);
+    } catch (err) {
+      res.status(400).json({ message: "Invalid request" });
+    }
   });
 
   app.delete(api.inventory.delete.path, requireRole("admin"), async (req, res) => {
-    const id = parseInt(req.params.id);
-    await storage.deleteInventoryItem(id);
-    res.status(204).end();
-  });
+    try {
+      const id = parseId(req.params.id);
 
-  // === Bulk Stock Update ===
-  const bulkUpdateSchema = z.object({
-    updates: z.array(z.object({
-      id: z.number().int().positive(),
-      quantity: z.number().int().min(0),
-    })).min(1, "At least one update is required"),
-  });
+      await storage.deleteInventoryItem(id);
 
-  app.patch("/api/inventory/bulk-update", async (req: any, res) => {
-    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
-    const userId = req.user.claims.sub;
-    const profile = await storage.getProfile(userId);
-    if (!profile || (profile.role !== "admin" && profile.role !== "engineer")) {
-      return res.status(403).json({ message: "Forbidden" });
+      res.status(204).end();
+    } catch {
+      res.status(400).json({ message: "Invalid ID" });
     }
+  });
 
+  /*
+  |--------------------------------------------------------------------------
+  | Bulk Update
+  |--------------------------------------------------------------------------
+  */
+
+  const bulkUpdateSchema = z.object({
+    updates: z.array(
+      z.object({
+        id: z.number().int().positive(),
+        quantity: z.number().int().min(0),
+      })
+    ),
+  });
+
+  app.patch("/api/inventory/bulk-update", requireRole("admin"), async (req, res) => {
     try {
       const parsed = bulkUpdateSchema.parse(req.body);
-      
-      let successCount = 0;
-      for (const u of parsed.updates) {
-        await storage.updateInventoryItem(u.id, { quantity: u.quantity });
-        successCount++;
+
+      let success = 0;
+
+      for (const update of parsed.updates) {
+        await storage.updateInventoryItem(update.id, {
+          quantity: update.quantity,
+        });
+
+        success++;
       }
-      
-      res.json({ success: successCount });
+
+      res.json({ success });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
-      res.status(500).json({ message: err.message });
+
+      res.status(500).json({ message: "Bulk update failed" });
+    }
+  });
+
+  /*
+  |--------------------------------------------------------------------------
+  | Service Requests
+  |--------------------------------------------------------------------------
+  */
+
+  app.get(api.serviceRequests.list.path, async (req: any, res) => {
+    const requests = await storage.getAllServiceRequests();
+
+    const userId = req.user?.claims?.sub;
+
+    if (userId) {
+      const profile = await storage.getProfile(userId);
+
+      if (profile?.role === "engineer") {
+        return res.json(
+          requests.filter((r) => r.assignedToId === userId)
+        );
+      }
+    }
+
+    res.json(requests);
+  });
+
+  /*
+  |--------------------------------------------------------------------------
+  | Reports
+  |--------------------------------------------------------------------------
+  */
+
+  app.get(api.reports.generate.path, async (req: any, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const id = parseId(req.params.id);
+
+      const request = await storage.getServiceRequestWithDetails(id);
+
+      if (!request) {
+        return res.status(404).json({ message: "Not found" });
+      }
+
+      const doc = new PDFDocument({
+        size: "A4",
+        margin: 50,
+        bufferPages: true,
+      });
+
+      res.setHeader("Content-Type", "application/pdf");
+
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename=service-report-${id}.pdf`
+      );
+
+      doc.pipe(res);
+
+      doc
+        .fontSize(22)
+        .fillColor("#1a56db")
+        .text("DRONE SERVICE CENTER", { align: "center" });
+
+      doc
+        .fontSize(16)
+        .fillColor("#333")
+        .text("Service Report", { align: "center" });
+
+      doc.moveDown();
+
+      addSectionHeader(doc, "Service Details");
+
+      addFieldRow(doc, "Service ID", String(request.id));
+      addFieldRow(doc, "Status", request.status);
+      addFieldRow(doc, "Type", request.serviceType);
+
+      doc.end();
+
+    } catch (err) {
+      console.error("PDF error:", err);
+
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Failed to generate PDF" });
+      }
     }
   });
 
@@ -526,29 +729,35 @@ export async function registerRoutes(
       res.status(500).json({ message: err.message });
     }
   });
+ async function fetchObjectAsBuffer(objectPath: string): Promise<Buffer | null> {
+  try {
+    if (!objectPath) return null;
 
-  // === Reports (PDF) ===
-  const objectStorageService = new ObjectStorageService();
+    // If it's a URL, fetch it directly
+    if (objectPath.startsWith("http")) {
+      const response = await fetch(objectPath);
 
-  async function fetchObjectAsBuffer(objectPath: string): Promise<Buffer | null> {
-    try {
-      if (!objectPath || (!objectPath.startsWith('/objects/') && !objectPath.startsWith('http'))) {
+      if (!response.ok) {
+        console.error("Failed to fetch file:", objectPath);
         return null;
       }
-      let filePath = objectPath;
-      if (objectPath.startsWith('http')) {
-        filePath = objectStorageService.normalizeObjectEntityPath(objectPath);
-      }
-      if (!filePath.startsWith('/objects/')) return null;
-      const file = await objectStorageService.getObjectEntityFile(filePath);
-      const [buffer] = await file.download();
-      return buffer;
-    } catch (err) {
-      console.error('Failed to fetch object for report:', objectPath, err);
+
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    }
+
+    // Local object storage paths are not supported in local mode
+    if (objectPath.startsWith("/objects/")) {
+      console.warn("Local object storage disabled:", objectPath);
       return null;
     }
-  }
 
+    return null;
+  } catch (err) {
+    console.error("Failed to fetch object for report:", objectPath, err);
+    return null;
+  }
+}
   function addSectionHeader(doc: PDFKit.PDFDocument, title: string) {
     if (doc.y > 680) doc.addPage();
     doc.moveDown(0.5);
@@ -827,33 +1036,60 @@ export async function registerRoutes(
       }
     }
   });
+// === Pincode Lookup (India Post API) ===
+app.get("/api/pincode/:pincode", async (req, res) => {
+  const { pincode } = req.params;
 
-  // === Pincode Lookup (India Post API) ===
-  app.get("/api/pincode/:pincode", async (req, res) => {
-    const { pincode } = req.params;
-    if (!/^\d{6}$/.test(pincode)) {
-      return res.status(400).json({ message: "Invalid pincode. Must be 6 digits." });
-    }
-    try {
-      const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
-      const data = await response.json();
-      if (data && data[0] && data[0].Status === "Success" && data[0].PostOffice?.length > 0) {
-        const postOffices = data[0].PostOffice;
-        const state = postOffices[0].State;
-        const district = postOffices[0].District;
-        const areas = postOffices.map((po: any) => ({
-          name: po.Name,
-          block: po.Block,
-          division: po.Division,
-        }));
-        return res.json({ success: true, state, district, areas, pincode });
-      }
-      return res.json({ success: false, message: "Pincode not found" });
-    } catch (err) {
-      console.error("Pincode lookup error:", err);
-      return res.status(500).json({ success: false, message: "Failed to lookup pincode" });
-    }
-  });
+  if (!/^\d{6}$/.test(pincode)) {
+    return res.status(400).json({ message: "Invalid pincode. Must be 6 digits." });
+  }
 
-  return httpServer;
+  try {
+    const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+    const data = await response.json();
+
+    if (data && data[0] && data[0].Status === "Success" && data[0].PostOffice?.length > 0) {
+      const postOffices = data[0].PostOffice;
+
+      const state = postOffices[0].State;
+      const district = postOffices[0].District;
+
+      const areas = postOffices.map((po: any) => ({
+        name: po.Name,
+        block: po.Block,
+        division: po.Division,
+      }));
+
+      return res.json({
+        success: true,
+        state,
+        district,
+        areas,
+        pincode
+      });
+    }
+
+    return res.json({
+      success: false,
+      message: "Pincode not found"
+    });
+
+  } catch (err) {
+    console.error("Pincode lookup error:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to lookup pincode"
+    });
+  }
+});
+
+
+// === Logout (Local Dev Mode) ===
+app.get("/api/logout", (req, res) => {
+  res.redirect("/");
+});
+
+
+return httpServer;
 }

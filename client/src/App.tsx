@@ -3,17 +3,14 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useAuth } from "@/hooks/use-auth";
 import { LayoutShell } from "@/components/layout-shell";
-import { Loader2 } from "lucide-react";
-
+import AuthPage from "@/pages/auth";
 import Dashboard from "@/pages/dashboard";
 import InventoryPage from "@/pages/inventory";
 import ServiceRequestsPage from "@/pages/service-requests/index";
 import ServiceRequestDetail from "@/pages/service-requests/detail";
 import UsersPage from "@/pages/users";
 import BillingPage from "@/pages/billing";
-import AuthPage from "@/pages/auth";
 import NotFound from "@/pages/not-found";
 
 function ProtectedRoutes() {
@@ -33,17 +30,10 @@ function ProtectedRoutes() {
 }
 
 function Router() {
-  const { user, isLoading } = useAuth();
+  const loggedIn = localStorage.getItem("loggedIn");
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!user) {
+  if (!loggedIn) {
+    window.history.replaceState(null, "", "/auth");
     return <AuthPage />;
   }
 

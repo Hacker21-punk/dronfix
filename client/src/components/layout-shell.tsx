@@ -101,12 +101,16 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
               <p className="text-xs text-muted-foreground capitalize">{role}</p>
             </div>
           </div>
-          <Button variant="outline" size="sm" className="w-full justify-start text-muted-foreground hover:text-destructive hover:bg-destructive/10 hover:border-destructive/20" asChild>
-            <a href="/api/logout">
-              <LogOut className="h-3 w-3 mr-2" />
-              Sign Out
-            </a>
-          </Button>
+          <Button
+  variant="outline"
+  className="w-full"
+  onClick={() => {
+    localStorage.removeItem("loggedIn");
+    window.location.href = "/auth";
+  }}
+>
+  Sign Out
+</Button>
         </div>
       </div>
     </div>
