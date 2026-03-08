@@ -116,10 +116,9 @@ const clientPath = path.join(__dirname, "../dist/public");
 
 app.use(express.static(clientPath));
 
-app.get("/*", (_req, res) => {
+app.get("/", (_req, res) => {
   res.sendFile(path.join(clientPath, "index.html"));
 });
-
 
 } else {
 /*
