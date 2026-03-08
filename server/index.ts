@@ -1,60 +1,63 @@
 import "dotenv/config";
 import express, { type Request, type Response, type NextFunction } from "express";
 import { createServer } from "http";
+import path from "path";
+import { fileURLToPath } from "url";
 import { registerRoutes } from "./routes";
-import { serveStatic } from "./static";
 
 const app = express();
 const httpServer = createServer(app);
 
-/**
+/*
+Resolve __dirname for ES modules
+*/
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-* Extend request to include rawBody
-  */
-  declare global {
-  namespace Express {
-  interface Request {
-  rawBody?: Buffer;
-  }
-  }
-  }
+/*
+Extend Express request to include rawBody
+*/
+declare global {
+namespace Express {
+interface Request {
+rawBody?: Buffer;
+}
+}
+}
 
-/**
-
-* JSON parser with raw body capture
-  */
-  app.use(
-  express.json({
-  verify: (req: Request, _res, buf) => {
-  req.rawBody = buf;
-  },
-  })
-  );
+/*
+JSON parser with raw body capture
+*/
+app.use(
+express.json({
+verify: (req: Request, _res, buf) => {
+req.rawBody = buf;
+},
+})
+);
 
 app.use(express.urlencoded({ extended: false }));
 
-/**
-
-* Logger
-  */
-  export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-  hour: "numeric",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: true,
-  });
+/*
+Logger helper
+*/
+export function log(message: string, source = "express") {
+const formattedTime = new Date().toLocaleTimeString("en-US", {
+hour: "numeric",
+minute: "2-digit",
+second: "2-digit",
+hour12: true,
+});
 
 console.log(`${formattedTime} [${source}] ${message}`);
 }
 
-/**
-
-* API request logger
-  */
-  app.use((req: Request, res: Response, next: NextFunction) => {
-  const start = Date.now();
-  const path = req.path;
+/*
+API request logger
+*/
+app.use((req: Request, res: Response, next: NextFunction) => {
+const start = Date.now();
+const pathName = req.path;
 
 let capturedJson: unknown;
 
@@ -66,62 +69,75 @@ return originalJson(body);
 };
 
 res.on("finish", () => {
-  const duration = Date.now() - start;
+const duration = Date.now() - start;
 
-  if (path.startsWith("/api")) {
-    let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
 
-    if (capturedJson) {
-      logLine += ` :: ${JSON.stringify(capturedJson)}`;
-    }
+if (pathName.startsWith("/api")) {
+  let logLine = `${req.method} ${pathName} ${res.statusCode} in ${duration}ms`;
 
-    log(logLine);
+  if (capturedJson) {
+    logLine += ` :: ${JSON.stringify(capturedJson)}`;
   }
+
+  log(logLine);
+}
+
 });
 
 next();
 });
 
-/**
- * Start server
- */
+/*
+Start server
+*/
 (async () => {
-  await registerRoutes(httpServer, app);
+await registerRoutes(httpServer, app);
 
-  /**
-   * Global error handler
-   */
-  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-    const status = err?.status || err?.statusCode || 500;
-    const message = err?.message || "Internal Server Error";
+/*
+Global error handler
+*/
+app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+const status = err?.status || err?.statusCode || 500;
+const message = err?.message || "Internal Server Error";
 
-    console.error("Internal Server Error:", err);
+console.error("Internal Server Error:", err);
 
-    if (res.headersSent) {
-      return next(err);
-    }
+if (res.headersSent) {
+  return next(err);
+}
 
-    res.status(status).json({ message });
-  });
+res.status(status).json({ message });
 
-/**
 
-* Static / Vite setup
-  */
-  if (process.env.NODE_ENV === "production") {
-  serveStatic(app);
-  } else {
-  const { setupVite } = await import("./vite");
-  await setupVite(httpServer, app);
-  }
+});
 
-/**
+/*
+Serve frontend in production
+*/
+if (process.env.NODE_ENV === "production") {
+const clientPath = path.join(__dirname, "../dist/public");
 
-* Start server
-  */
-  const PORT = Number(process.env.PORT) || 5000;
+app.use(express.static(clientPath));
+
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(clientPath, "index.html"));
+});
+
+
+} else {
+/*
+Vite dev server
+*/
+const { setupVite } = await import("./vite");
+await setupVite(httpServer, app);
+}
+
+/*
+Start listening
+*/
+const PORT = Number(process.env.PORT) || 5000;
 
 httpServer.listen(PORT, () => {
-log(`Server running on http://localhost:${PORT}`);
+log(`Server running on port ${PORT}`);
 });
 })();
