@@ -1,18 +1,15 @@
 import "dotenv/config";
 import express, { type Request, type Response, type NextFunction } from "express";
 import { createServer } from "http";
-import path from "path";
-import { fileURLToPath } from "url";
 import { registerRoutes } from "./routes";
-
+import path from "path";
 const app = express();
 const httpServer = createServer(app);
 
 /*
 Resolve __dirname for ES modules
 */
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = path.resolve();
 
 /*
 Extend Express request to include rawBody
