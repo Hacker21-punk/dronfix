@@ -12,6 +12,7 @@
 },
 "dependencies": {
 "vite": "^7.3.0",
+"@vitejs/plugin-react": "^4.7.0",
 "@google-cloud/storage": "^7.19.0",
 "@hookform/resolvers": "^3.10.0",
 "@jridgewell/trace-mapping": "^0.3.25",
@@ -111,7 +112,7 @@
 "@types/react": "^18.3.11",
 "@types/react-dom": "^18.3.1",
 "@types/ws": "^8.5.13",
-"@vitejs/plugin-react": "^4.7.0",
+
 "autoprefixer": "^10.4.20",
 "drizzle-kit": "^0.31.8",
 "esbuild": "^0.25.0",
