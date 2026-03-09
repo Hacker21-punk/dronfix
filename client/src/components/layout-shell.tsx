@@ -26,7 +26,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const { data: profile } = useCurrentUser();
   const [location] = useLocation();
-  const role = profile?.role || "engineer"; 
+  const role = profile?.role;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const isLogistics = role === 'logistics';
@@ -37,8 +37,12 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
     { name: 'Inventory', href: '/inventory', icon: Package, roles: ['admin'] },
     { name: 'Users', href: '/users', icon: Users, roles: ['admin'] },
   ];
-
-  const filteredNav = navigation.filter(item => item.roles.includes(role));
+if (!profile) {
+  return <div className="p-6">Loading...</div>;
+}
+  const filteredNav = role
+  ? navigation.filter(item => item.roles.includes(role))
+  : [];
 
   const NavContent = () => (
     <div className="flex flex-col h-full">

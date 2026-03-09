@@ -1,9 +1,10 @@
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { LayoutShell } from "@/components/layout-shell";
+
 import AuthPage from "@/pages/auth";
 import Dashboard from "@/pages/dashboard";
 import InventoryPage from "@/pages/inventory";
@@ -30,14 +31,19 @@ function ProtectedRoutes() {
 }
 
 function Router() {
-  const loggedIn = localStorage.getItem("loggedIn");
+  const token = localStorage.getItem("token")
 
-  if (!loggedIn) {
-    window.history.replaceState(null, "", "/auth");
-    return <AuthPage />;
-  }
+  return (
+    <Switch>
+      {!token && <Route path="/auth" component={AuthPage} />}
+      
+      {!token && <Redirect to="/auth" />}
 
-  return <ProtectedRoutes />;
+      {token && <Route path="/auth"><Redirect to="/" /></Route>}
+
+      {token && <Route path="/*" component={ProtectedRoutes} />}
+    </Switch>
+  );
 }
 
 function App() {
