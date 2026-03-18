@@ -1,15 +1,38 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@shared/routes";
+import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export function useUsers() {
   return useQuery({
-    queryKey: [api.users.list.path],
+    queryKey: ["/api/users"],
     queryFn: async () => {
-      const res = await fetch(api.users.list.path, { credentials: "include" });
+      const res = await fetch("/api/users", {
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error("Failed to fetch users");
-      return api.users.list.responses[200].parse(await res.json());
+      return res.json();
     },
+  });
+}
+
+export function useCurrentUser() {
+  return useQuery({
+    queryKey: ["/api/auth/me"],
+    queryFn: async () => {
+      const res = await fetch("/api/auth/me", {
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    retry: false,
   });
 }
 
@@ -18,19 +41,16 @@ export function useCreateUser() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (data: { email: string; name: string; role: 'admin' | 'engineer' | 'account' }) => {
-      const res = await fetch(api.users.create.path, {
-        method: api.users.create.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to create user");
-      return api.users.create.responses[201].parse(await res.json());
+    mutationFn: async (data: { name: string; email: string; password: string; role: string }) => {
+      const res = await apiRequest("POST", "/api/auth/register", data);
+      return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.users.list.path] });
-      toast({ title: "Success", description: "User created successfully" });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "Success", description: "User created" });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
 }
@@ -40,35 +60,34 @@ export function useUpdateUser() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: number; name?: string; email?: string; role?: 'admin' | 'engineer' | 'account' }) => {
-      const res = await fetch(`/api/users/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to update user");
+    mutationFn: async ({ id, ...data }: { id: string; name?: string; email?: string; role?: string }) => {
+      const res = await apiRequest("PUT", `/api/users/${id}`, data);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.users.list.path] });
-      toast({ title: "Success", description: "User updated successfully" });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "Success", description: "User updated" });
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to update user", variant: "destructive" });
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
 }
 
-export function useCurrentUser() {
-  return useQuery({
-    queryKey: [api.auth.me.path],
-    queryFn: async () => {
-      const res = await fetch(api.auth.me.path, { credentials: "include" });
-      if (res.status === 401) return null;
-      if (!res.ok) throw new Error("Failed to fetch current user");
-      return api.auth.me.responses[200].parse(await res.json());
+export function useDeleteUser() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/users/${id}`);
     },
-    retry: false,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "Success", description: "User deleted" });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
   });
 }

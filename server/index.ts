@@ -2,6 +2,7 @@ import "dotenv/config";
 import express, { type Request, type Response, type NextFunction } from "express";
 import { createServer } from "http";
 import { registerRoutes } from "./routes";
+import { seedAdmin } from "./seed";
 import path from "path";
 const app = express();
 const httpServer = createServer(app);
@@ -88,7 +89,8 @@ next();
 Start server
 */
 (async () => {
-await registerRoutes(httpServer, app);
+await registerRoutes(app);
+await seedAdmin();
 
 /*
 Global error handler

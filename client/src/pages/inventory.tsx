@@ -37,8 +37,8 @@ export default function InventoryPage() {
     return null;
   }
 
-  const filteredInventory = inventory?.filter(item => 
-    item.name.toLowerCase().includes(search.toLowerCase()) || 
+  const filteredInventory = inventory?.filter((item: any) => 
+    item.itemName.toLowerCase().includes(search.toLowerCase()) || 
     item.sku.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -113,11 +113,11 @@ export default function InventoryPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredInventory?.map((item) => (
+              filteredInventory?.map((item: any) => (
                 <TableRow key={item.id} className="group hover:bg-muted/30 transition-colors">
                   <TableCell className="font-mono text-xs text-muted-foreground">{item.sku}</TableCell>
-                  <TableCell className="font-medium">{item.name}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(Number(item.price))}</TableCell>
+                  <TableCell className="font-medium">{item.itemName}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(Number(item.unitPrice))}</TableCell>
                   <TableCell className="text-right font-medium">{item.quantity}</TableCell>
                   <TableCell className="text-right">
                     {item.quantity <= item.criticalLevel ? (
@@ -221,11 +221,11 @@ function InventoryFormDialog({
     resolver: zodResolver(formSchema),
     defaultValues: defaultValues ? {
       ...defaultValues,
-      price: Number(defaultValues.price), // Convert decimal string to number
+      unitPrice: Number(defaultValues.unitPrice),
     } : {
-      name: "",
+      itemName: "",
       sku: "",
-      price: 0,
+      unitPrice: 0,
       quantity: 0,
       criticalLevel: 5,
       description: "",
@@ -241,7 +241,7 @@ function InventoryFormDialog({
   if (open && mode === 'edit' && defaultValues && form.getValues().sku !== defaultValues.sku) {
     form.reset({
       ...defaultValues,
-      price: Number(defaultValues.price),
+      unitPrice: Number(defaultValues.unitPrice),
     });
   }
 
@@ -266,9 +266,9 @@ function InventoryFormDialog({
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Item Name</Label>
-              <Input id="name" {...form.register("name")} />
-              {form.formState.errors.name && <p className="text-xs text-destructive">{form.formState.errors.name.message}</p>}
+              <Label htmlFor="itemName">Item Name</Label>
+              <Input id="itemName" {...form.register("itemName")} />
+              {(form.formState.errors as any).itemName && <p className="text-xs text-destructive">{(form.formState.errors as any).itemName.message}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="sku">SKU</Label>
@@ -279,8 +279,8 @@ function InventoryFormDialog({
           
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="price">Price</Label>
-              <Input id="price" type="number" step="0.01" {...form.register("price")} />
+              <Label htmlFor="unitPrice">Price</Label>
+              <Input id="unitPrice" type="number" step="0.01" {...form.register("unitPrice")} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="quantity">Quantity</Label>
@@ -367,7 +367,7 @@ function BulkEditStockDialog({
   };
 
   const filteredItems = items.filter(item =>
-    item.name.toLowerCase().includes(bulkSearch.toLowerCase()) ||
+    item.itemName.toLowerCase().includes(bulkSearch.toLowerCase()) ||
     item.sku.toLowerCase().includes(bulkSearch.toLowerCase())
   );
 
@@ -415,7 +415,7 @@ function BulkEditStockDialog({
                     <TableCell className="font-mono text-xs text-muted-foreground">{item.sku}</TableCell>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
-                        {item.name}
+                        {item.itemName}
                         {isLow && <AlertCircle className="h-3.5 w-3.5 text-destructive" />}
                       </div>
                     </TableCell>

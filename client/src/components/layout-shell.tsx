@@ -6,24 +6,20 @@ import {
   Package, 
   Wrench, 
   Users, 
-  FileText,
   Receipt,
   LogOut,
   Menu,
-  X,
-  Settings,
   ChevronRight,
   Truck
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { Avatar, AvatarFallback } from "./ui/avatar";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
-import { Separator } from "./ui/separator";
 import hanronLogo from "@assets/hanron_logo_1771243986590.png";
 
 export function LayoutShell({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { logout } = useAuth();
   const { data: profile } = useCurrentUser();
   const [location] = useLocation();
   const role = profile?.role;
@@ -37,12 +33,14 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
     { name: 'Inventory', href: '/inventory', icon: Package, roles: ['admin'] },
     { name: 'Users', href: '/users', icon: Users, roles: ['admin'] },
   ];
-if (!profile) {
-  return <div className="p-6">Loading...</div>;
-}
+
+  if (!profile) {
+    return <div className="p-6">Loading...</div>;
+  }
+
   const filteredNav = role
-  ? navigation.filter(item => item.roles.includes(role))
-  : [];
+    ? navigation.filter(item => item.roles.includes(role))
+    : [];
 
   const NavContent = () => (
     <div className="flex flex-col h-full">
@@ -97,7 +95,6 @@ if (!profile) {
         <div className="bg-muted/50 rounded-xl p-4 border border-border/50">
           <div className="flex items-center gap-3 mb-3">
             <Avatar className="h-9 w-9 border-2 border-background shadow-sm">
-              <AvatarImage src={user?.profileImageUrl || undefined} />
               <AvatarFallback>{profile?.name?.[0] || 'U'}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
@@ -106,15 +103,14 @@ if (!profile) {
             </div>
           </div>
           <Button
-  variant="outline"
-  className="w-full"
-  onClick={() => {
-    localStorage.removeItem("loggedIn");
-    window.location.href = "/auth";
-  }}
->
-  Sign Out
-</Button>
+            variant="outline"
+            className="w-full"
+            onClick={logout}
+            data-testid="button-logout"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Sign Out
+          </Button>
         </div>
       </div>
     </div>

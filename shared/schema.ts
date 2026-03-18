@@ -1,156 +1,144 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, decimal, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, decimal, pgEnum } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { users } from "./models/auth";
+import { users, roleEnum } from "./models/auth";
 
 export * from "./models/auth";
 
-// Enums
-export const roleEnum = pgEnum("role", ["admin", "engineer", "account", "logistics"]);
+// ─── Enums ───────────────────────────────────────────────────────────────────
 export const serviceTypeEnum = pgEnum("service_type", ["L1", "L2", "L3"]);
-export const serviceStatusEnum = pgEnum("service_status", ["pending", "accepted", "in_progress", "completed", "billed"]);
+export const serviceStatusEnum = pgEnum("service_status", ["open", "closed"]);
 export const shippingStatusEnum = pgEnum("shipping_status", ["shipped", "in_transit", "delivered"]);
 export const modeOfTravelEnum = pgEnum("mode_of_travel", ["Train", "Bus", "Auto", "Flight"]);
+export const documentTypeEnum = pgEnum("document_type", ["job_sheet", "feedback", "crash_report", "audit_report", "log_report"]);
 
-// Extend users table with role - we'll do this by defining a separate profile table 
-// or just assuming we can add to the auth schema. 
-// Since we can't easily modify the imported auth.ts without file edits, 
-// let's create a 'user_roles' table or just assume we'll edit auth.ts later.
-// Actually, editing auth.ts is better. I will do that in a separate step. 
-// For now, let's assume 'users' has 'role'. 
-// Wait, I can't assume that if I don't add it.
-// I will create a `profiles` table to extend user data.
-export const profiles = pgTable("profiles", {
-  id: serial("id").primaryKey(),
-  userId: text("user_id"), // Nullable until they log in and link account
-  role: roleEnum("role").default("engineer").notNull(),
-  name: text("name").notNull(),
-  email: text("email").notNull().unique(),
-});
-
+// ─── 1. INVENTORY ────────────────────────────────────────────────────────────
 export const inventory = pgTable("inventory", {
   id: serial("id").primaryKey(),
-  name: text("name").notNull(),
+  itemName: text("item_name").notNull(),
   sku: text("sku").notNull().unique(),
   quantity: integer("quantity").notNull().default(0),
+  unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
+  currency: text("currency").notNull().default("INR"),
   criticalLevel: integer("critical_level").notNull().default(5),
-  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  description: text("description"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// ─── 2. SERVICE REQUESTS ─────────────────────────────────────────────────────
 export const serviceRequests = pgTable("service_requests", {
   id: serial("id").primaryKey(),
   pilotName: text("pilot_name").notNull(),
-  droneNo: text("drone_no").notNull(),
-  droneSerial: text("drone_serial").notNull(),
-  pilotAddress: text("pilot_address").notNull(),
+  droneNumber: text("drone_number").notNull(),
+  serialNumber: text("serial_number").notNull(),
+  address: text("address").notNull(),
   pincode: text("pincode"),
   state: text("state"),
   district: text("district"),
   contactDetails: text("contact_details").notNull(),
   complaint: text("complaint").notNull(),
-  partsRequested: text("parts_requested"), // Initial request
   serviceType: serviceTypeEnum("service_type").notNull(),
-  status: serviceStatusEnum("status").default("pending").notNull(),
-  
-  // Assigned to (Engineer)
-  assignedToId: text("assigned_to_id").references(() => users.id),
+  status: serviceStatusEnum("status").default("open").notNull(),
+  assignedEngineerId: text("assigned_engineer_id").references(() => users.id),
   tentativeServiceDate: timestamp("tentative_service_date"),
-  
-  // Completion details
-  completedAt: timestamp("completed_at"),
-  
-  // Documents (URLs)
-  jobSheetUrl: text("job_sheet_url"),
-  feedbackFormUrl: text("feedback_form_url"),
-  crashReportUrl: text("crash_report_url"),
-  auditReportUrl: text("audit_report_url"),
-  logReportUrl: text("log_report_url"),
-  
-  // Billing / Invoice
-  invoiceUrl: text("invoice_url"),
-  challanUrl: text("challan_url"),
-  billNo: text("bill_no"),
-  invoiceNumber: text("invoice_number"),
-  challanNumber: text("challan_number"),
-  invoiceValue: decimal("invoice_value", { precision: 12, scale: 2 }),
-  reimbursementAmount: decimal("reimbursement_amount", { precision: 12, scale: 2 }),
-  invoiceType: text("invoice_type"),
-  invoiceDate: timestamp("invoice_date"),
-
-  // Logistics / Shipping
-  shippingPartnerName: text("shipping_partner_name"),
-  docketDetails: text("docket_details"),
-  shippingDate: timestamp("shipping_date"),
-  shippingStatus: shippingStatusEnum("shipping_status"),
-  
   createdAt: timestamp("created_at").defaultNow(),
+  closedAt: timestamp("closed_at"),
 });
 
-export const serviceImages = pgTable("service_images", {
+// ─── 3. PARTS REQUESTED ─────────────────────────────────────────────────────
+export const partsRequested = pgTable("parts_requested", {
   id: serial("id").primaryKey(),
   serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
-  imageUrl: text("image_url").notNull(),
-  type: text("type").notNull(), // 'before' or 'after'
-  createdAt: timestamp("created_at").defaultNow(),
+  itemName: text("item_name").notNull(),
+  quantity: integer("quantity").notNull().default(1),
 });
 
+// ─── 4. PARTS CONSUMED ──────────────────────────────────────────────────────
 export const partsConsumed = pgTable("parts_consumed", {
   id: serial("id").primaryKey(),
   serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
   inventoryId: integer("inventory_id").notNull().references(() => inventory.id),
-  quantity: integer("quantity").notNull(),
-  recordedAt: timestamp("recorded_at").defaultNow(),
+  quantityUsed: integer("quantity_used").notNull(),
+  timestamp: timestamp("timestamp").defaultNow(),
 });
 
-export const engineerExpenses = pgTable("engineer_expenses", {
+// ─── 5. DOCUMENTS ────────────────────────────────────────────────────────────
+export const documents = pgTable("documents", {
   id: serial("id").primaryKey(),
   serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
-  engineerId: text("engineer_id").notNull().references(() => users.id),
+  type: documentTypeEnum("type").notNull(),
+  fileUrl: text("file_url").notNull(),
+  uploadedBy: text("uploaded_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ─── 6. IMAGES ───────────────────────────────────────────────────────────────
+export const images = pgTable("images", {
+  id: serial("id").primaryKey(),
+  serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
+  type: text("type").notNull(), // 'before' or 'after'
+  fileUrl: text("file_url").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ─── 7. EXPENSES ─────────────────────────────────────────────────────────────
+export const expenses = pgTable("expenses", {
+  id: serial("id").primaryKey(),
+  serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
   date: timestamp("date").notNull(),
   description: text("description").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   billStatus: boolean("bill_status").notNull().default(false),
-  billImageUrl: text("bill_image_url"),
+  billFile: text("bill_file"),
   onlineSlip: boolean("online_slip").notNull().default(false),
-  onlineSlipImageUrl: text("online_slip_image_url"),
-  modeOfPayment: text("mode_of_payment").notNull().default("Cash"),
-  modeOfTravel: modeOfTravelEnum("mode_of_travel").notNull(),
+  slipFile: text("slip_file"),
+  paymentMode: text("payment_mode").notNull().default("Cash"),
+  travelMode: modeOfTravelEnum("travel_mode").notNull(),
   baseLocation: text("base_location").notNull(),
-  remark: text("remark"),
+  remarks: text("remarks"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Relations
-export const profilesRelations = relations(profiles, ({ one }) => ({
-  user: one(users, {
-    fields: [profiles.userId],
-    references: [users.id],
-  }),
-}));
+// ─── 8. INVOICES ─────────────────────────────────────────────────────────────
+export const invoices = pgTable("invoices", {
+  id: serial("id").primaryKey(),
+  serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
+  invoiceNumber: text("invoice_number").notNull(),
+  challanNumber: text("challan_number"),
+  invoiceValue: decimal("invoice_value", { precision: 12, scale: 2 }).notNull(),
+  reimbursementAmount: decimal("reimbursement_amount", { precision: 12, scale: 2 }),
+  invoiceType: text("invoice_type"),
+  invoiceDate: timestamp("invoice_date"),
+});
 
+// ─── 9. LOGISTICS ────────────────────────────────────────────────────────────
+export const logistics = pgTable("logistics", {
+  id: serial("id").primaryKey(),
+  serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
+  shippingPartner: text("shipping_partner").notNull(),
+  docketNumber: text("docket_number"),
+  shippingDate: timestamp("shipping_date"),
+  shippingStatus: shippingStatusEnum("shipping_status").default("shipped"),
+});
+
+// ─── Relations ───────────────────────────────────────────────────────────────
 export const serviceRequestsRelations = relations(serviceRequests, ({ one, many }) => ({
-  assignedTo: one(users, {
-    fields: [serviceRequests.assignedToId],
+  assignedEngineer: one(users, {
+    fields: [serviceRequests.assignedEngineerId],
     references: [users.id],
   }),
-  images: many(serviceImages),
+  partsRequested: many(partsRequested),
   partsConsumed: many(partsConsumed),
-  expenses: many(engineerExpenses),
+  documents: many(documents),
+  images: many(images),
+  expenses: many(expenses),
+  invoices: many(invoices),
+  logistics: many(logistics),
 }));
 
-export const engineerExpensesRelations = relations(engineerExpenses, ({ one }) => ({
+export const partsRequestedRelations = relations(partsRequested, ({ one }) => ({
   serviceRequest: one(serviceRequests, {
-    fields: [engineerExpenses.serviceRequestId],
-    references: [serviceRequests.id],
-  }),
-}));
-
-export const serviceImagesRelations = relations(serviceImages, ({ one }) => ({
-  serviceRequest: one(serviceRequests, {
-    fields: [serviceImages.serviceRequestId],
+    fields: [partsRequested.serviceRequestId],
     references: [serviceRequests.id],
   }),
 }));
@@ -160,39 +148,82 @@ export const partsConsumedRelations = relations(partsConsumed, ({ one }) => ({
     fields: [partsConsumed.serviceRequestId],
     references: [serviceRequests.id],
   }),
-  item: one(inventory, {
+  inventoryItem: one(inventory, {
     fields: [partsConsumed.inventoryId],
     references: [inventory.id],
   }),
 }));
 
-// Schemas
-export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true, updatedAt: true });
-export const insertServiceRequestSchema = createInsertSchema(serviceRequests).omit({ 
-  id: true, 
-  status: true, 
-  completedAt: true, 
-  createdAt: true 
-});
-export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true });
-export const insertPartsConsumedSchema = createInsertSchema(partsConsumed).omit({ id: true, recordedAt: true });
-export const insertEngineerExpenseSchema = createInsertSchema(engineerExpenses).omit({ id: true, createdAt: true });
+export const documentsRelations = relations(documents, ({ one }) => ({
+  serviceRequest: one(serviceRequests, {
+    fields: [documents.serviceRequestId],
+    references: [serviceRequests.id],
+  }),
+  uploader: one(users, {
+    fields: [documents.uploadedBy],
+    references: [users.id],
+  }),
+}));
 
-// Types
+export const imagesRelations = relations(images, ({ one }) => ({
+  serviceRequest: one(serviceRequests, {
+    fields: [images.serviceRequestId],
+    references: [serviceRequests.id],
+  }),
+}));
+
+export const expensesRelations = relations(expenses, ({ one }) => ({
+  serviceRequest: one(serviceRequests, {
+    fields: [expenses.serviceRequestId],
+    references: [serviceRequests.id],
+  }),
+}));
+
+export const invoicesRelations = relations(invoices, ({ one }) => ({
+  serviceRequest: one(serviceRequests, {
+    fields: [invoices.serviceRequestId],
+    references: [serviceRequests.id],
+  }),
+}));
+
+export const logisticsRelations = relations(logistics, ({ one }) => ({
+  serviceRequest: one(serviceRequests, {
+    fields: [logistics.serviceRequestId],
+    references: [serviceRequests.id],
+  }),
+}));
+
+// ─── Insert Schemas ──────────────────────────────────────────────────────────
+export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true, updatedAt: true });
+export const insertServiceRequestSchema = createInsertSchema(serviceRequests).omit({
+  id: true,
+  status: true,
+  closedAt: true,
+  createdAt: true,
+});
+export const insertPartsRequestedSchema = createInsertSchema(partsRequested).omit({ id: true });
+export const insertPartsConsumedSchema = createInsertSchema(partsConsumed).omit({ id: true, timestamp: true });
+export const insertDocumentSchema = createInsertSchema(documents).omit({ id: true, createdAt: true });
+export const insertImageSchema = createInsertSchema(images).omit({ id: true, createdAt: true });
+export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, createdAt: true });
+export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true });
+export const insertLogisticsSchema = createInsertSchema(logistics).omit({ id: true });
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 export type Inventory = typeof inventory.$inferSelect;
 export type InsertInventory = z.infer<typeof insertInventorySchema>;
 export type ServiceRequest = typeof serviceRequests.$inferSelect;
 export type InsertServiceRequest = z.infer<typeof insertServiceRequestSchema>;
-export type Profile = typeof profiles.$inferSelect;
-export type ServiceImage = typeof serviceImages.$inferSelect;
+export type PartRequested = typeof partsRequested.$inferSelect;
 export type PartConsumed = typeof partsConsumed.$inferSelect;
-export type EngineerExpense = typeof engineerExpenses.$inferSelect;
-export type InsertEngineerExpense = z.infer<typeof insertEngineerExpenseSchema>;
+export type Document = typeof documents.$inferSelect;
+export type ServiceImage = typeof images.$inferSelect;
+export type Expense = typeof expenses.$inferSelect;
+export type InsertExpense = z.infer<typeof insertExpenseSchema>;
+export type Invoice = typeof invoices.$inferSelect;
+export type Logistics = typeof logistics.$inferSelect;
 
-// Custom types for API
-export type CreateServiceRequest = z.infer<typeof insertServiceRequestSchema>;
-export type UpdateServiceRequest = Partial<CreateServiceRequest> & {
+export type UpdateServiceRequest = Partial<InsertServiceRequest> & {
   status?: typeof serviceStatusEnum.enumValues[number];
-  tentativeServiceDate?: any; // Allow string or Date for flexibility
+  tentativeServiceDate?: any;
 };
-

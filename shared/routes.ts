@@ -5,25 +5,19 @@ import {
   insertPartsConsumedSchema,
   inventory, 
   serviceRequests, 
-  profiles,
-  serviceImages,
-  partsConsumed
+  images,
+  partsConsumed,
+  documents,
+  invoices,
+  logistics,
+  users,
 } from './schema';
 
 export const errorSchemas = {
-  validation: z.object({
-    message: z.string(),
-    field: z.string().optional(),
-  }),
-  notFound: z.object({
-    message: z.string(),
-  }),
-  internal: z.object({
-    message: z.string(),
-  }),
-  unauthorized: z.object({
-    message: z.string(),
-  })
+  validation: z.object({ message: z.string(), field: z.string().optional() }),
+  notFound: z.object({ message: z.string() }),
+  internal: z.object({ message: z.string() }),
+  unauthorized: z.object({ message: z.string() }),
 };
 
 export const api = {
@@ -32,7 +26,7 @@ export const api = {
       method: 'GET' as const,
       path: '/api/auth/me' as const,
       responses: {
-        200: z.custom<typeof profiles.$inferSelect>(),
+        200: z.custom<typeof users.$inferSelect>(),
         401: errorSchemas.unauthorized,
       }
     }
@@ -41,9 +35,7 @@ export const api = {
     list: {
       method: 'GET' as const,
       path: '/api/inventory' as const,
-      responses: {
-        200: z.array(z.custom<typeof inventory.$inferSelect>()),
-      },
+      responses: { 200: z.array(z.custom<typeof inventory.$inferSelect>()) },
     },
     create: {
       method: 'POST' as const,
@@ -70,21 +62,21 @@ export const api = {
         204: z.void(),
         404: errorSchemas.notFound,
       },
-    }
+    },
   },
   serviceRequests: {
     list: {
       method: 'GET' as const,
       path: '/api/service-requests' as const,
       responses: {
-        200: z.array(z.custom<typeof serviceRequests.$inferSelect & { assignedTo?: { name: string } }>()), 
+        200: z.array(z.any()),
       },
     },
     get: {
       method: 'GET' as const,
       path: '/api/service-requests/:id' as const,
       responses: {
-        200: z.custom<typeof serviceRequests.$inferSelect & { images: typeof serviceImages.$inferSelect[], parts: typeof partsConsumed.$inferSelect[] }>(),
+        200: z.any(),
         404: errorSchemas.notFound,
       },
     },
@@ -101,8 +93,8 @@ export const api = {
       method: 'PUT' as const,
       path: '/api/service-requests/:id' as const,
       input: insertServiceRequestSchema.partial().extend({
-        status: z.enum(["pending", "accepted", "in_progress", "completed", "billed"]).optional(),
-        tentativeServiceDate: z.string().optional(), // ISO string
+        status: z.enum(["open", "closed"]).optional(),
+        tentativeServiceDate: z.string().optional(),
       }),
       responses: {
         200: z.custom<typeof serviceRequests.$inferSelect>(),
@@ -113,45 +105,69 @@ export const api = {
       method: 'PATCH' as const,
       path: '/api/service-requests/:id/assign' as const,
       input: z.object({ engineerId: z.string() }),
-      responses: {
-        200: z.custom<typeof serviceRequests.$inferSelect>(),
-      }
-    }
+      responses: { 200: z.custom<typeof serviceRequests.$inferSelect>() },
+    },
   },
-  serviceImages: {
+  images: {
     upload: {
       method: 'POST' as const,
       path: '/api/service-requests/:id/images' as const,
-      input: z.object({
-        imageUrl: z.string(),
-        type: z.enum(['before', 'after'])
-      }),
-      responses: {
-        201: z.custom<typeof serviceImages.$inferSelect>(),
-      }
-    }
+      input: z.object({ fileUrl: z.string(), type: z.enum(['before', 'after']) }),
+      responses: { 201: z.custom<typeof images.$inferSelect>() },
+    },
+  },
+  documents: {
+    upload: {
+      method: 'POST' as const,
+      path: '/api/service-requests/:id/documents' as const,
+      input: z.object({ type: z.enum(['job_sheet', 'feedback', 'crash_report', 'audit_report', 'log_report']), fileUrl: z.string() }),
+      responses: { 201: z.custom<typeof documents.$inferSelect>() },
+    },
   },
   partsConsumed: {
     add: {
       method: 'POST' as const,
       path: '/api/service-requests/:id/parts' as const,
-      input: z.object({
-        inventoryId: z.number(),
-        quantity: z.number()
-      }),
+      input: z.object({ inventoryId: z.number(), quantity: z.number() }),
       responses: {
         201: z.custom<typeof partsConsumed.$inferSelect>(),
-        400: z.object({ message: z.string() }) // Insufficient stock
-      }
-    }
+        400: z.object({ message: z.string() }),
+      },
+    },
+  },
+  invoices: {
+    create: {
+      method: 'POST' as const,
+      path: '/api/service-requests/:id/invoice' as const,
+      input: z.object({
+        invoiceNumber: z.string(),
+        challanNumber: z.string().optional(),
+        invoiceValue: z.string(),
+        reimbursementAmount: z.string().optional(),
+        invoiceType: z.string().optional(),
+        invoiceDate: z.string().optional(),
+      }),
+      responses: { 201: z.custom<typeof invoices.$inferSelect>() },
+    },
+  },
+  logistics: {
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/service-requests/:id/logistics' as const,
+      input: z.object({
+        shippingPartner: z.string(),
+        docketNumber: z.string().optional(),
+        shippingDate: z.string().optional(),
+        shippingStatus: z.enum(["shipped", "in_transit", "delivered"]).optional(),
+      }),
+      responses: { 200: z.custom<typeof logistics.$inferSelect>() },
+    },
   },
   reports: {
     generate: {
       method: 'GET' as const,
       path: '/api/service-requests/:id/report' as const,
-      responses: {
-        200: z.any(), // PDF stream
-      }
+      responses: { 200: z.any() },
     },
     dashboard: {
       method: 'GET' as const,
@@ -165,17 +181,15 @@ export const api = {
           avgAgingL1: z.number().optional(),
           avgAgingL2: z.number().optional(),
           avgAgingL3: z.number().optional(),
-        })
-      }
-    }
+        }),
+      },
+    },
   },
   users: {
     list: {
       method: 'GET' as const,
       path: '/api/users' as const,
-      responses: {
-        200: z.array(z.custom<typeof profiles.$inferSelect>())
-      }
+      responses: { 200: z.array(z.custom<typeof users.$inferSelect>()) },
     },
     create: {
       method: 'POST' as const,
@@ -183,13 +197,11 @@ export const api = {
       input: z.object({
         email: z.string().email(),
         name: z.string(),
-        role: z.enum(['admin', 'engineer', 'account', 'logistics'])
+        role: z.enum(['admin', 'engineer', 'account', 'logistics']),
       }),
-      responses: {
-        201: z.custom<typeof profiles.$inferSelect>()
-      }
-    }
-  }
+      responses: { 201: z.custom<typeof users.$inferSelect>() },
+    },
+  },
 };
 
 export function buildUrl(path: string, params?: Record<string, string | number>): string {

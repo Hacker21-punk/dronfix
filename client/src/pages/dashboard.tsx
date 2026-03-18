@@ -159,7 +159,7 @@ export default function Dashboard() {
                 </a>
               </>
             )}
-            {(isAdmin || isEngineer) && (
+            {isAdmin && (
               <a href="/inventory" className="flex flex-col items-center justify-center p-6 bg-muted/30 hover:bg-muted/60 rounded-xl border border-dashed border-border transition-colors">
                 <Package className="h-8 w-8 mb-2 text-primary" />
                 <span className="font-medium">Inventory</span>

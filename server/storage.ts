@@ -1,293 +1,474 @@
 import { db } from "./db";
-import { eq, sql, desc, and, lte } from "drizzle-orm";
 import {
-  users, profiles, inventory, serviceRequests, serviceImages, partsConsumed, engineerExpenses,
-  type User, type UpsertUser, type Profile, type InsertInventory, type Inventory,
-  type InsertServiceRequest, type ServiceRequest, type insertPartsConsumedSchema,
-  type ServiceImage, type PartConsumed, type UpdateServiceRequest,
-  type EngineerExpense, type InsertEngineerExpense
+  users,
+  inventory,
+  serviceRequests,
+  partsRequested,
+  partsConsumed,
+  documents,
+  images,
+  expenses,
+  invoices,
+  logistics,
+  type InsertInventory,
+  type InsertServiceRequest,
+  type InsertExpense,
+  type UpdateServiceRequest,
 } from "@shared/schema";
+import { eq, sql, and, lte, desc, inArray } from "drizzle-orm";
+import { hashPassword } from "./auth";
 
 export interface IStorage {
-  // Profiles
-  getProfile(userId: string): Promise<Profile | undefined>;
-  getProfileByEmail(email: string): Promise<Profile | undefined>;
-  createProfile(profile: any): Promise<Profile>;
-  updateProfile(id: number, data: { name?: string; email?: string; role?: 'admin' | 'engineer' | 'account' | 'logistics' }): Promise<Profile | undefined>;
-  getAllProfiles(): Promise<Profile[]>;
-  
+  // Users
+  getUserByEmail(email: string): Promise<any>;
+  getUserById(id: string): Promise<any>;
+  createUser(data: { name: string; email: string; password: string; role: string }): Promise<any>;
+  getAllUsers(): Promise<any[]>;
+  updateUser(id: string, data: Partial<{ name: string; email: string; role: string }>): Promise<any>;
+  deleteUser(id: string): Promise<void>;
+
   // Inventory
-  getAllInventory(): Promise<Inventory[]>;
-  getInventoryItem(id: number): Promise<Inventory | undefined>;
-  createInventoryItem(item: InsertInventory): Promise<Inventory>;
-  updateInventoryItem(id: number, updates: Partial<InsertInventory>): Promise<Inventory>;
+  getAllInventory(): Promise<any[]>;
+  createInventoryItem(data: InsertInventory): Promise<any>;
+  updateInventoryItem(id: number, data: Partial<InsertInventory>): Promise<any>;
   deleteInventoryItem(id: number): Promise<void>;
-  
+
   // Service Requests
-  getAllServiceRequests(): Promise<(ServiceRequest & { assignedTo?: { name: string } })[]>;
-  getServiceRequest(id: number): Promise<ServiceRequest | undefined>;
-  getServiceRequestWithDetails(id: number): Promise<ServiceRequest & { images: ServiceImage[], parts: PartConsumed[], assignedTo?: Profile } | undefined>;
-  createServiceRequest(request: InsertServiceRequest): Promise<ServiceRequest>;
-  updateServiceRequest(id: number, updates: UpdateServiceRequest): Promise<ServiceRequest>;
-  
-  // Service Images
-  addServiceImage(image: any): Promise<ServiceImage>;
-  getServiceImages(requestId: number): Promise<ServiceImage[]>;
-  
+  getAllServiceRequests(role?: string, userId?: string): Promise<any[]>;
+  getServiceRequestWithDetails(id: number): Promise<any>;
+  createServiceRequest(data: InsertServiceRequest): Promise<any>;
+  updateServiceRequest(id: number, data: UpdateServiceRequest): Promise<any>;
+  assignEngineer(id: number, engineerId: string): Promise<any>;
+
+  // Parts Requested
+  addPartsRequested(serviceRequestId: number, items: { itemName: string; quantity: number }[]): Promise<any[]>;
+
   // Parts Consumed
-  addPartConsumed(part: any): Promise<PartConsumed>;
-  getPartsConsumed(requestId: number): Promise<PartConsumed[]>;
-  
-  // Engineer Expenses
-  getExpenses(serviceRequestId: number): Promise<EngineerExpense[]>;
-  addExpense(expense: InsertEngineerExpense): Promise<EngineerExpense>;
-  updateExpense(id: number, data: Partial<InsertEngineerExpense>): Promise<EngineerExpense | undefined>;
-  deleteExpense(id: number): Promise<void>;
-  
+  consumePart(serviceRequestId: number, inventoryId: number, quantity: number): Promise<any>;
+
+  // Documents
+  addDocument(serviceRequestId: number, type: string, fileUrl: string, uploadedBy: string): Promise<any>;
+  getDocuments(serviceRequestId: number): Promise<any[]>;
+
+  // Images
+  addImage(serviceRequestId: number, type: string, fileUrl: string): Promise<any>;
+
+  // Expenses
+  getExpenses(serviceRequestId: number): Promise<any[]>;
+  addExpense(serviceRequestId: number, data: any): Promise<any>;
+  updateExpense(expenseId: number, data: any): Promise<any>;
+  deleteExpense(expenseId: number): Promise<void>;
+
+  // Invoices
+  createInvoice(serviceRequestId: number, data: any): Promise<any>;
+  getInvoice(serviceRequestId: number): Promise<any>;
+
+  // Logistics
+  upsertLogistics(serviceRequestId: number, data: any): Promise<any>;
+  getLogistics(serviceRequestId: number): Promise<any>;
+
   // Dashboard
-  getDashboardStats(engineerId?: string): Promise<any>;
+  getDashboardStats(role?: string, userId?: string): Promise<any>;
+  
+  // Billing
+  getBilledRequests(): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
-  // Profiles
-  async getProfile(userId: string): Promise<Profile | undefined> {
-    const [profile] = await db.select().from(profiles).where(eq(profiles.userId, userId));
-    return profile;
-  }
-  
-  async getProfileByEmail(email: string): Promise<Profile | undefined> {
-    const [profile] = await db.select().from(profiles).where(eq(profiles.email, email));
-    return profile;
+  // ── Users ──────────────────────────────────────────────────────────────────
+  async getUserByEmail(email: string) {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user || null;
   }
 
-  async createProfile(profileData: any): Promise<Profile> {
-    if (profileData.id) {
-      const [updated] = await db.update(profiles)
-        .set(profileData)
-        .where(eq(profiles.id, profileData.id))
-        .returning();
-      return updated;
-    }
-    const [profile] = await db.insert(profiles).values(profileData).returning();
-    return profile;
-  }
-  
-  async updateProfile(id: number, data: { name?: string; email?: string; role?: 'admin' | 'engineer' | 'account' | 'logistics' }): Promise<Profile | undefined> {
-    const [updated] = await db.update(profiles)
-      .set(data)
-      .where(eq(profiles.id, id))
-      .returning();
-    return updated;
+  async getUserById(id: string) {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || null;
   }
 
-  async getAllProfiles(): Promise<Profile[]> {
-    return await db.select().from(profiles);
+  async createUser(data: { name: string; email: string; password: string; role: string }) {
+    const [user] = await db.insert(users).values({
+      name: data.name,
+      email: data.email,
+      password: data.password,
+      role: data.role as any,
+    }).returning();
+    return user;
   }
 
-  // Inventory
-  async getAllInventory(): Promise<Inventory[]> {
-    return await db.select().from(inventory).orderBy(desc(inventory.updatedAt));
+  async getAllUsers() {
+    return db.select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      role: users.role,
+      createdAt: users.createdAt,
+    }).from(users).orderBy(users.name);
   }
 
-  async getInventoryItem(id: number): Promise<Inventory | undefined> {
-    const [item] = await db.select().from(inventory).where(eq(inventory.id, id));
+  async updateUser(id: string, data: Partial<{ name: string; email: string; role: string }>) {
+    const updateData: any = {};
+    if (data.name) updateData.name = data.name;
+    if (data.email) updateData.email = data.email;
+    if (data.role) updateData.role = data.role;
+
+    const [user] = await db.update(users).set(updateData).where(eq(users.id, id)).returning();
+    return user;
+  }
+
+  async deleteUser(id: string) {
+    await db.delete(users).where(eq(users.id, id));
+  }
+
+  // ── Inventory ──────────────────────────────────────────────────────────────
+  async getAllInventory() {
+    return db.select().from(inventory).orderBy(inventory.itemName);
+  }
+
+  async createInventoryItem(data: InsertInventory) {
+    const [item] = await db.insert(inventory).values(data).returning();
     return item;
   }
 
-  async createInventoryItem(item: InsertInventory): Promise<Inventory> {
-    const [newItem] = await db.insert(inventory).values(item).returning();
-    return newItem;
+  async updateInventoryItem(id: number, data: Partial<InsertInventory>) {
+    const [item] = await db.update(inventory).set({
+      ...data,
+      updatedAt: new Date(),
+    }).where(eq(inventory.id, id)).returning();
+    return item;
   }
 
-  async updateInventoryItem(id: number, updates: Partial<InsertInventory>): Promise<Inventory> {
-    const [updated] = await db.update(inventory).set({ ...updates, updatedAt: new Date() }).where(eq(inventory.id, id)).returning();
-    return updated;
-  }
-
-  async deleteInventoryItem(id: number): Promise<void> {
+  async deleteInventoryItem(id: number) {
     await db.delete(inventory).where(eq(inventory.id, id));
   }
 
-  // Service Requests
-  async getAllServiceRequests(): Promise<(ServiceRequest & { assignedTo?: { name: string } })[]> {
-    const requests = await db.query.serviceRequests.findMany({
-      orderBy: desc(serviceRequests.createdAt),
-      with: {
-        assignedTo: true // This relates to users table, but we want profile name. 
-        // We'll join or just fetch profile.
-        // Actually, assignedTo relates to `users` table. `profiles` also relates to `users`.
-        // Let's do a join with profiles.
-      }
-    });
-    
-    // Map to include profile name
-    const requestWithProfileNames = await Promise.all(requests.map(async (req) => {
-      let assignedName = "Unassigned";
-      if (req.assignedToId) {
-        const [profile] = await db.select().from(profiles).where(eq(profiles.userId, req.assignedToId));
-        if (profile) assignedName = profile.name;
-      }
-      return { ...req, assignedTo: { name: assignedName } };
+  // ── Service Requests ───────────────────────────────────────────────────────
+  async getAllServiceRequests(role?: string, userId?: string) {
+    let rows: any[];
+
+    if (role === "engineer" && userId) {
+      rows = await db.select().from(serviceRequests)
+        .where(eq(serviceRequests.assignedEngineerId, userId))
+        .orderBy(desc(serviceRequests.createdAt));
+    } else {
+      rows = await db.select().from(serviceRequests)
+        .orderBy(desc(serviceRequests.createdAt));
+    }
+
+    // Join engineer names
+    if (rows.length === 0) return rows;
+
+    const engineerIds = Array.from(new Set(rows.map(r => r.assignedEngineerId).filter(Boolean)));
+    let engineerMap: Record<string, string> = {};
+
+    if (engineerIds.length > 0) {
+      const engineers = await db.select({ id: users.id, name: users.name })
+        .from(users).where(inArray(users.id, engineerIds));
+      engineerMap = Object.fromEntries(engineers.map(e => [e.id, e.name]));
+    }
+
+    // Get logistics for each request (for shipping status)
+    const requestIds = rows.map(r => r.id);
+    const logisticsRows = await db.select().from(logistics)
+      .where(inArray(logistics.serviceRequestId, requestIds));
+    const logisticsMap: Record<number, any> = {};
+    for (const l of logisticsRows) {
+      logisticsMap[l.serviceRequestId] = l;
+    }
+
+    return rows.map(r => ({
+      ...r,
+      assignedTo: r.assignedEngineerId ? { name: engineerMap[r.assignedEngineerId] || "Unknown" } : null,
+      logistics: logisticsMap[r.id] || null,
     }));
-    
-    return requestWithProfileNames;
   }
 
-  async getServiceRequest(id: number): Promise<ServiceRequest | undefined> {
-    const [req] = await db.select().from(serviceRequests).where(eq(serviceRequests.id, id));
-    return req;
-  }
+  async getServiceRequestWithDetails(id: number) {
+    const [request] = await db.select().from(serviceRequests).where(eq(serviceRequests.id, id));
+    if (!request) return null;
 
-  async getServiceRequestWithDetails(id: number): Promise<ServiceRequest & { images: ServiceImage[], parts: PartConsumed[], assignedTo?: Profile } | undefined> {
-    const request = await this.getServiceRequest(id);
-    if (!request) return undefined;
-    
-    const images = await this.getServiceImages(id);
-    const partsRaw = await db.select({
-      id: partsConsumed.id,
-      serviceRequestId: partsConsumed.serviceRequestId,
-      inventoryId: partsConsumed.inventoryId,
-      quantity: partsConsumed.quantity,
-      recordedAt: partsConsumed.recordedAt,
-      itemName: inventory.name,
-      itemPrice: inventory.price,
-      itemSku: inventory.sku,
-    }).from(partsConsumed)
-      .leftJoin(inventory, eq(partsConsumed.inventoryId, inventory.id))
-      .where(eq(partsConsumed.serviceRequestId, id));
-    
-    const parts = partsRaw.map(p => ({
-      id: p.id,
-      serviceRequestId: p.serviceRequestId,
-      inventoryId: p.inventoryId,
-      quantity: p.quantity,
-      recordedAt: p.recordedAt,
-      item: { name: p.itemName, price: p.itemPrice, sku: p.itemSku },
-    }));
-    
-    let assignedProfile: Profile | undefined;
-    if (request.assignedToId) {
-      const [profile] = await db.select().from(profiles).where(eq(profiles.userId, request.assignedToId));
-      assignedProfile = profile;
+    const [requestImages, requestDocuments, requestPartsConsumed, requestPartsRequested, requestExpenses, requestInvoices, requestLogistics] = await Promise.all([
+      db.select().from(images).where(eq(images.serviceRequestId, id)),
+      db.select().from(documents).where(eq(documents.serviceRequestId, id)),
+      db.select().from(partsConsumed).where(eq(partsConsumed.serviceRequestId, id)),
+      db.select().from(partsRequested).where(eq(partsRequested.serviceRequestId, id)),
+      db.select().from(expenses).where(eq(expenses.serviceRequestId, id)),
+      db.select().from(invoices).where(eq(invoices.serviceRequestId, id)),
+      db.select().from(logistics).where(eq(logistics.serviceRequestId, id)),
+    ]);
+
+    // Resolve inventory item names for consumed parts
+    let partsWithNames = requestPartsConsumed;
+    if (requestPartsConsumed.length > 0) {
+      const inventoryIds = Array.from(new Set(requestPartsConsumed.map(p => p.inventoryId)));
+      const inventoryItems = await db.select({ id: inventory.id, itemName: inventory.itemName })
+        .from(inventory).where(inArray(inventory.id, inventoryIds));
+      const itemMap = Object.fromEntries(inventoryItems.map(i => [i.id, i.itemName]));
+
+      partsWithNames = requestPartsConsumed.map(p => ({
+        ...p,
+        itemName: itemMap[p.inventoryId] || "Unknown Item",
+      }));
     }
-    
-    return { ...request, images, parts, assignedTo: assignedProfile };
-  }
 
-  async createServiceRequest(request: InsertServiceRequest): Promise<ServiceRequest> {
-    const [newReq] = await db.insert(serviceRequests).values(request).returning();
-    return newReq;
-  }
-
-  async updateServiceRequest(id: number, updates: UpdateServiceRequest): Promise<ServiceRequest> {
-    // Handle tentativeServiceDate string to Date conversion if needed
-    const { tentativeServiceDate, ...rest } = updates;
-    const updateData: any = { ...rest };
-    
-    if (tentativeServiceDate) {
-      updateData.tentativeServiceDate = new Date(tentativeServiceDate);
+    // Get assigned engineer name
+    let assignedEngineer = null;
+    if (request.assignedEngineerId) {
+      const [eng] = await db.select({ id: users.id, name: users.name })
+        .from(users).where(eq(users.id, request.assignedEngineerId));
+      assignedEngineer = eng || null;
     }
-    
-    if (updates.status === "completed") {
-      updateData.completedAt = new Date();
+
+    return {
+      ...request,
+      assignedTo: assignedEngineer,
+      images: requestImages,
+      documents: requestDocuments,
+      partsConsumed: partsWithNames,
+      partsRequested: requestPartsRequested,
+      expenses: requestExpenses,
+      invoice: requestInvoices[0] || null,
+      logistics: requestLogistics[0] || null,
+    };
+  }
+
+  async createServiceRequest(data: InsertServiceRequest) {
+    const [request] = await db.insert(serviceRequests).values(data).returning();
+    return request;
+  }
+
+  async updateServiceRequest(id: number, data: UpdateServiceRequest) {
+    const updateData: any = { ...data };
+    if (data.status === "closed" && !(data as any).closedAt) {
+      updateData.closedAt = new Date();
     }
-    
-    const [updated] = await db.update(serviceRequests).set(updateData).where(eq(serviceRequests.id, id)).returning();
-    return updated;
+    if (data.tentativeServiceDate && typeof data.tentativeServiceDate === "string") {
+      updateData.tentativeServiceDate = new Date(data.tentativeServiceDate);
+    }
+
+    const [request] = await db.update(serviceRequests).set(updateData).where(eq(serviceRequests.id, id)).returning();
+    return request;
   }
 
-  // Service Images
-  async addServiceImage(image: any): Promise<ServiceImage> {
-    const [newImage] = await db.insert(serviceImages).values(image).returning();
-    return newImage;
+  async assignEngineer(id: number, engineerId: string) {
+    const [request] = await db.update(serviceRequests)
+      .set({ assignedEngineerId: engineerId })
+      .where(eq(serviceRequests.id, id)).returning();
+    return request;
   }
 
-  async getServiceImages(requestId: number): Promise<ServiceImage[]> {
-    return await db.select().from(serviceImages).where(eq(serviceImages.serviceRequestId, requestId));
+  // ── Parts Requested ────────────────────────────────────────────────────────
+  async addPartsRequested(serviceRequestId: number, items: { itemName: string; quantity: number }[]) {
+    const values = items.map(item => ({ serviceRequestId, ...item }));
+    return db.insert(partsRequested).values(values).returning();
   }
 
-  // Parts Consumed
-  async addPartConsumed(part: any): Promise<PartConsumed> {
-    // Wrap in transaction to deduct stock
-    return await db.transaction(async (tx) => {
-      // Check stock
-      const [item] = await tx.select().from(inventory).where(eq(inventory.id, part.inventoryId));
-      if (!item || item.quantity < part.quantity) {
-        throw new Error("Insufficient stock");
-      }
-      
-      // Deduct stock
-      await tx.update(inventory)
-        .set({ quantity: item.quantity - part.quantity, updatedAt: new Date() })
-        .where(eq(inventory.id, part.inventoryId));
-        
-      // Record consumption
-      const [newPart] = await tx.insert(partsConsumed).values(part).returning();
-      return newPart;
-    });
+  // ── Parts Consumed (with inventory transaction) ────────────────────────────
+  async consumePart(serviceRequestId: number, inventoryId: number, quantity: number) {
+    // Check stock
+    const [item] = await db.select().from(inventory).where(eq(inventory.id, inventoryId));
+    if (!item) throw new Error("Inventory item not found");
+    if (item.quantity < quantity) throw new Error("Insufficient stock");
+
+    // Deduct stock
+    await db.update(inventory).set({
+      quantity: item.quantity - quantity,
+      updatedAt: new Date(),
+    }).where(eq(inventory.id, inventoryId));
+
+    // Record consumption
+    const [consumed] = await db.insert(partsConsumed).values({
+      serviceRequestId,
+      inventoryId,
+      quantityUsed: quantity,
+    }).returning();
+
+    return consumed;
   }
 
-  async getPartsConsumed(requestId: number): Promise<PartConsumed[]> {
-    return await db.select().from(partsConsumed).where(eq(partsConsumed.serviceRequestId, requestId));
-  }
-  
-  // Engineer Expenses
-  async getExpenses(serviceRequestId: number): Promise<EngineerExpense[]> {
-    return await db.select().from(engineerExpenses)
-      .where(eq(engineerExpenses.serviceRequestId, serviceRequestId))
-      .orderBy(desc(engineerExpenses.date));
-  }
-
-  async addExpense(expense: InsertEngineerExpense): Promise<EngineerExpense> {
-    const [newExpense] = await db.insert(engineerExpenses).values(expense).returning();
-    return newExpense;
+  // ── Documents ──────────────────────────────────────────────────────────────
+  async addDocument(serviceRequestId: number, type: string, fileUrl: string, uploadedBy: string) {
+    const [doc] = await db.insert(documents).values({
+      serviceRequestId,
+      type: type as any,
+      fileUrl,
+      uploadedBy,
+    }).returning();
+    return doc;
   }
 
-  async updateExpense(id: number, data: Partial<InsertEngineerExpense>): Promise<EngineerExpense | undefined> {
-    const [updated] = await db.update(engineerExpenses).set(data).where(eq(engineerExpenses.id, id)).returning();
-    return updated;
+  async getDocuments(serviceRequestId: number) {
+    return db.select().from(documents).where(eq(documents.serviceRequestId, serviceRequestId));
   }
 
-  async deleteExpense(id: number): Promise<void> {
-    await db.delete(engineerExpenses).where(eq(engineerExpenses.id, id));
+  // ── Images ─────────────────────────────────────────────────────────────────
+  async addImage(serviceRequestId: number, type: string, fileUrl: string) {
+    const [image] = await db.insert(images).values({
+      serviceRequestId,
+      type,
+      fileUrl,
+    }).returning();
+    return image;
   }
 
-  // Dashboard
-  async getDashboardStats(engineerId?: string): Promise<any> {
-    const allInventory = await this.getAllInventory();
-    const totalStockValue = allInventory.reduce((acc, item) => acc + (Number(item.price) * item.quantity), 0);
+  // ── Expenses ───────────────────────────────────────────────────────────────
+  async getExpenses(serviceRequestId: number) {
+    return db.select().from(expenses).where(eq(expenses.serviceRequestId, serviceRequestId)).orderBy(desc(expenses.date));
+  }
+
+  async addExpense(serviceRequestId: number, data: any) {
+    const [expense] = await db.insert(expenses).values({
+      serviceRequestId,
+      date: new Date(data.date),
+      description: data.description,
+      amount: data.amount,
+      billStatus: data.billStatus,
+      billFile: data.billFile || null,
+      onlineSlip: data.onlineSlip,
+      slipFile: data.slipFile || null,
+      paymentMode: data.onlineSlip ? "Online" : "Cash",
+      travelMode: data.travelMode as any,
+      baseLocation: data.baseLocation,
+      remarks: data.remarks || null,
+    }).returning();
+    return expense;
+  }
+
+  async updateExpense(expenseId: number, data: any) {
+    const [expense] = await db.update(expenses).set({
+      date: new Date(data.date),
+      description: data.description,
+      amount: data.amount,
+      billStatus: data.billStatus,
+      billFile: data.billFile || null,
+      onlineSlip: data.onlineSlip,
+      slipFile: data.slipFile || null,
+      paymentMode: data.onlineSlip ? "Online" : "Cash",
+      travelMode: data.travelMode as any,
+      baseLocation: data.baseLocation,
+      remarks: data.remarks || null,
+    }).where(eq(expenses.id, expenseId)).returning();
+    return expense;
+  }
+
+  async deleteExpense(expenseId: number) {
+    await db.delete(expenses).where(eq(expenses.id, expenseId));
+  }
+
+  // ── Invoices ───────────────────────────────────────────────────────────────
+  async createInvoice(serviceRequestId: number, data: any) {
+    // Upsert: delete existing then insert
+    await db.delete(invoices).where(eq(invoices.serviceRequestId, serviceRequestId));
+
+    const [invoice] = await db.insert(invoices).values({
+      serviceRequestId,
+      invoiceNumber: data.invoiceNumber,
+      challanNumber: data.challanNumber || null,
+      invoiceValue: data.invoiceValue,
+      reimbursementAmount: data.reimbursementAmount || null,
+      invoiceType: data.invoiceType || null,
+      invoiceDate: data.invoiceDate ? new Date(data.invoiceDate) : null,
+    }).returning();
+
+    // Mark service request as closed/billed
+    await db.update(serviceRequests).set({ status: "closed", closedAt: new Date() })
+      .where(eq(serviceRequests.id, serviceRequestId));
+
+    return invoice;
+  }
+
+  async getInvoice(serviceRequestId: number) {
+    const [invoice] = await db.select().from(invoices).where(eq(invoices.serviceRequestId, serviceRequestId));
+    return invoice || null;
+  }
+
+  // ── Logistics ──────────────────────────────────────────────────────────────
+  async upsertLogistics(serviceRequestId: number, data: any) {
+    const existing = await db.select().from(logistics).where(eq(logistics.serviceRequestId, serviceRequestId));
+
+    if (existing.length > 0) {
+      const [updated] = await db.update(logistics).set({
+        shippingPartner: data.shippingPartner,
+        docketNumber: data.docketNumber || null,
+        shippingDate: data.shippingDate ? new Date(data.shippingDate) : null,
+        shippingStatus: data.shippingStatus as any || "shipped",
+      }).where(eq(logistics.serviceRequestId, serviceRequestId)).returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(logistics).values({
+        serviceRequestId,
+        shippingPartner: data.shippingPartner,
+        docketNumber: data.docketNumber || null,
+        shippingDate: data.shippingDate ? new Date(data.shippingDate) : null,
+        shippingStatus: data.shippingStatus as any || "shipped",
+      }).returning();
+      return created;
+    }
+  }
+
+  async getLogistics(serviceRequestId: number) {
+    const [row] = await db.select().from(logistics).where(eq(logistics.serviceRequestId, serviceRequestId));
+    return row || null;
+  }
+
+  // ── Dashboard Stats ────────────────────────────────────────────────────────
+  async getDashboardStats(role?: string, userId?: string) {
+    const allInventory = await db.select().from(inventory);
+    const totalStockValue = allInventory.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0);
     const lowStockItems = allInventory.filter(item => item.quantity <= item.criticalLevel);
-    
-    const allRequests = await db.select().from(serviceRequests);
-    const relevantRequests = engineerId
-      ? allRequests.filter(r => r.assignedToId === engineerId)
-      : allRequests;
 
-    const pendingRequests = relevantRequests.filter(r => r.status === "pending" || r.status === "accepted" || r.status === "in_progress").length;
-    const completedRequests = relevantRequests.filter(r => r.status === "completed" || r.status === "billed").length;
-    
-    const now = new Date();
-    const openRequests = relevantRequests.filter(r => r.status === "pending" || r.status === "accepted" || r.status === "in_progress");
+    let requestsQuery = db.select().from(serviceRequests);
+    let allRequests: any[];
+
+    if (role === "engineer" && userId) {
+      allRequests = await requestsQuery.where(eq(serviceRequests.assignedEngineerId, userId));
+    } else {
+      allRequests = await requestsQuery;
+    }
+
+    const openRequests = allRequests.filter(r => r.status === "open");
+    const closedRequests = allRequests.filter(r => r.status === "closed");
 
     const avgAging = (type: string) => {
-      const filtered = openRequests.filter(r => r.serviceType === type);
+      const filtered = openRequests.filter(r => r.serviceType === type && r.createdAt);
       if (filtered.length === 0) return 0;
+      const now = Date.now();
       const totalDays = filtered.reduce((sum, r) => {
-        const created = r.createdAt ? new Date(r.createdAt) : now;
-        return sum + Math.max(0, Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)));
+        return sum + Math.floor((now - new Date(r.createdAt!).getTime()) / 86400000);
       }, 0);
-      return Math.round((totalDays / filtered.length) * 10) / 10;
+      return Math.round(totalDays / filtered.length);
     };
 
     return {
       totalStockValue,
       lowStockItems,
-      pendingRequests,
-      completedRequests,
+      pendingRequests: openRequests.length,
+      completedRequests: closedRequests.length,
       avgAgingL1: avgAging("L1"),
       avgAgingL2: avgAging("L2"),
       avgAgingL3: avgAging("L3"),
     };
+  }
+
+  // ── Billing ────────────────────────────────────────────────────────────────
+  async getBilledRequests() {
+    const closedRequests = await db.select().from(serviceRequests)
+      .where(eq(serviceRequests.status, "closed"))
+      .orderBy(desc(serviceRequests.closedAt));
+
+    if (closedRequests.length === 0) return [];
+
+    const requestIds = closedRequests.map(r => r.id);
+    const invoiceRows = await db.select().from(invoices)
+      .where(inArray(invoices.serviceRequestId, requestIds));
+    const invoiceMap = Object.fromEntries(invoiceRows.map(i => [i.serviceRequestId, i]));
+
+    return closedRequests
+      .filter(r => invoiceMap[r.id])
+      .map(r => ({
+        ...r,
+        invoice: invoiceMap[r.id],
+      }));
   }
 }
 

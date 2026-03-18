@@ -1,784 +1,374 @@
-import type { Express } from "express";
-import { type Server } from "http";
+import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
-import { api } from "@shared/routes";
-import { z } from "zod";
+import { verifyToken, hashPassword, comparePassword, generateToken } from "./auth";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 import PDFDocument from "pdfkit";
-import { hashPassword, comparePassword, generateToken } from "./auth";
 
-/*
-|--------------------------------------------------------------------------
-| Fake Auth Middleware (Local Dev Only)
-|--------------------------------------------------------------------------
-*/
+// ── Multer for file uploads ──────────────────────────────────────────────────
+const uploadsDir = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-const fakeAuth = async (req: any, res: any, next: any) => {
-  req.user = {
-    claims: {
-      sub: "local-user",
-      email: "admin@test.com",
-      first_name: "Local",
-      last_name: "Admin",
-    },
-  };
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadsDir),
+    filename: (_req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
+  }),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
 
-  req.isAuthenticated = () => true;
-
-  next();
-};
-
-/*
-|--------------------------------------------------------------------------
-| Role Middleware
-|--------------------------------------------------------------------------
-*/
-
-const requireRole = (role: string) => {
-  return async (req: any, res: any, next: any) => {
-    try {
-      const userId = req.user?.claims?.sub;
-
-      if (!userId) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
-
-      const profile = await storage.getProfile(userId);
-
-      if (!profile) {
-        return res.status(403).json({ message: "Profile not found" });
-      }
-
-      if (profile.role !== role && profile.role !== "admin") {
-        return res.status(403).json({ message: "Forbidden" });
-      }
-
-      req.profile = profile;
-
-      next();
-    } catch (err) {
-      console.error("Role middleware error:", err);
-      res.status(500).json({ message: "Authorization error" });
-    }
-  };
-};
-
-/*
-|--------------------------------------------------------------------------
-| Utility Helpers
-|--------------------------------------------------------------------------
-*/
-
-function parseId(id: string) {
-  const parsed = parseInt(id);
-  if (isNaN(parsed)) throw new Error("Invalid ID");
-  return parsed;
-}
-
-async function fetchObjectAsBuffer(objectPath: string): Promise<Buffer | null> {
-  try {
-    if (!objectPath) return null;
-
-    if (objectPath.startsWith("http")) {
-      const response = await fetch(objectPath);
-
-      if (!response.ok) return null;
-
-      const arrayBuffer = await response.arrayBuffer();
-      return Buffer.from(arrayBuffer);
-    }
-
-    return null;
-  } catch (err) {
-    console.error("Fetch object error:", err);
-    return null;
+// ── JWT Auth Middleware ──────────────────────────────────────────────────────
+function jwtAuth(req: Request, res: Response, next: NextFunction) {
+  const header = req.headers.authorization;
+  if (!header?.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "Missing or invalid token" });
   }
+  const payload = verifyToken(header.slice(7));
+  if (!payload) return res.status(401).json({ message: "Invalid or expired token" });
+
+  (req as any).user = payload; // { userId, role }
+  next();
 }
 
-function addSectionHeader(doc: PDFKit.PDFDocument, title: string) {
-  if (doc.y > 680) doc.addPage();
-
-  doc.moveDown(0.5);
-  doc.fontSize(14).fillColor("#1a56db").text(title);
-
-  doc.moveTo(doc.x, doc.y)
-    .lineTo(doc.x + 500, doc.y)
-    .strokeColor("#1a56db")
-    .lineWidth(1)
-    .stroke();
-
-  doc.moveDown(0.5);
-  doc.fillColor("#000");
-  doc.fontSize(10);
-}
-
-function addFieldRow(doc: PDFKit.PDFDocument, label: string, value: string) {
-  doc.font("Helvetica-Bold").text(`${label}: `, { continued: true });
-  doc.font("Helvetica").text(value || "N/A");
-}
-
-/*
-|--------------------------------------------------------------------------
-| Routes Registration
-|--------------------------------------------------------------------------
-*/
-
-export async function registerRoutes(
-  httpServer: Server,
-  app: Express
-): Promise<Server> {
-
-  app.use(fakeAuth);
-
-  /*
-  |--------------------------------------------------------------------------
-  | Profile
-  |--------------------------------------------------------------------------
-  */
-
-  app.get(api.auth.me.path, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-
-      let profile = await storage.getProfile(userId);
-
-      if (!profile) {
-        const allProfiles = await storage.getAllProfiles();
-
-        const role = allProfiles.length === 0 ? "admin" : "engineer";
-
-        const claims = req.user.claims;
-
-        profile = await storage.createProfile({
-          userId,
-          email: claims.email,
-          name: `${claims.first_name} ${claims.last_name}`,
-          role,
-        });
-      }
-
-      res.json(profile);
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: "Failed to load profile" });
+function requireRole(...roles: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const role = (req as any).user?.role;
+    if (!role || !roles.includes(role)) {
+      return res.status(403).json({ message: "Forbidden" });
     }
-  });
+    next();
+  };
+}
 
-  /*
-  |--------------------------------------------------------------------------
-  | Inventory
-  |--------------------------------------------------------------------------
-  */
-
-  app.get(api.inventory.list.path, async (_, res) => {
-    const items = await storage.getAllInventory();
-    res.json(items);
-  });
-
-  app.post(api.inventory.create.path, requireRole("admin"), async (req, res) => {
+export async function registerRoutes(app: Express) {
+  // ── Auth ─────────────────────────────────────────────────────────────────
+  app.post("/api/auth/login", async (req: Request, res: Response) => {
     try {
-      const input = api.inventory.create.input.parse(req.body);
+      const { email, password } = req.body;
+      if (!email || !password) return res.status(400).json({ message: "Email and password required" });
 
-      const item = await storage.createInventoryItem(input);
+      const user = await storage.getUserByEmail(email);
+      if (!user || !user.password) return res.status(401).json({ message: "Invalid email or password" });
 
-      res.status(201).json(item);
+      const valid = await comparePassword(password, user.password);
+      if (!valid) return res.status(401).json({ message: "Invalid email or password" });
+
+      const token = generateToken({ userId: user.id, role: user.role });
+      res.json({
+        token,
+        user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      });
     } catch (err: any) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/auth/register", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
+    try {
+      const { name, email, password, role } = req.body;
+      if (!name || !email || !password || !role) {
+        return res.status(400).json({ message: "All fields are required" });
       }
 
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
+      const existing = await storage.getUserByEmail(email);
+      if (existing) return res.status(409).json({ message: "Email already registered" });
 
-  app.put(api.inventory.update.path, requireRole("admin"), async (req, res) => {
-    try {
-      const id = parseId(req.params.id);
-
-      const input = api.inventory.update.input.parse(req.body);
-
-      const item = await storage.updateInventoryItem(id, input);
-
-      res.json(item);
-    } catch (err) {
-      res.status(400).json({ message: "Invalid request" });
-    }
-  });
-
-  app.delete(api.inventory.delete.path, requireRole("admin"), async (req, res) => {
-    try {
-      const id = parseId(req.params.id);
-
-      await storage.deleteInventoryItem(id);
-
-      res.status(204).end();
-    } catch {
-      res.status(400).json({ message: "Invalid ID" });
-    }
-  });
-
-  /*
-  |--------------------------------------------------------------------------
-  | Bulk Update
-  |--------------------------------------------------------------------------
-  */
-
-  const bulkUpdateSchema = z.object({
-    updates: z.array(
-      z.object({
-        id: z.number().int().positive(),
-        quantity: z.number().int().min(0),
-      })
-    ),
-  });
-
-  app.patch("/api/inventory/bulk-update", requireRole("admin"), async (req, res) => {
-    try {
-      const parsed = bulkUpdateSchema.parse(req.body);
-
-      let success = 0;
-
-      for (const update of parsed.updates) {
-        await storage.updateInventoryItem(update.id, {
-          quantity: update.quantity,
-        });
-
-        success++;
-      }
-
-      res.json({ success });
+      const hashedPw = await hashPassword(password);
+      const user = await storage.createUser({ name, email, password: hashedPw, role });
+      res.status(201).json({ id: user.id, name: user.name, email: user.email, role: user.role });
     } catch (err: any) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
-      }
-
-      res.status(500).json({ message: "Bulk update failed" });
+      res.status(500).json({ message: err.message });
     }
   });
 
-    /*
-  |--------------------------------------------------------------------------
-  | Service Requests
-  |--------------------------------------------------------------------------
-  */
+  app.get("/api/auth/me", jwtAuth, async (req: Request, res: Response) => {
+    const user = await storage.getUserById((req as any).user.userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+  });
 
-  app.get(api.serviceRequests.list.path, async (req: any, res) => {
-    const requests = await storage.getAllServiceRequests();
+  // ── Users ────────────────────────────────────────────────────────────────
+  app.get("/api/users", jwtAuth, requireRole("admin"), async (_req: Request, res: Response) => {
+    const usersList = await storage.getAllUsers();
+    res.json(usersList);
+  });
 
-    if (req.user) {
-      const userId = req.user.claims.sub;
-      const profile = await storage.getProfile(userId);
+  app.put("/api/users/:id", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
+    const user = await storage.updateUser(String(req.params.id), req.body);
+    res.json(user);
+  });
 
-      if (profile && profile.role === "engineer") {
-        const myRequests = requests.filter(
-          (r) => r.assignedToId === userId
-        );
-        return res.json(myRequests);
-      }
-    }
+  app.delete("/api/users/:id", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
+    await storage.deleteUser(String(req.params.id));
+    res.status(204).send();
+  });
 
+  // ── Inventory (admin only) ───────────────────────────────────────────────
+  app.get("/api/inventory", jwtAuth, requireRole("admin"), async (_req: Request, res: Response) => {
+    res.json(await storage.getAllInventory());
+  });
+
+  app.post("/api/inventory", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
+    const item = await storage.createInventoryItem(req.body);
+    res.status(201).json(item);
+  });
+
+  app.put("/api/inventory/:id", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
+    const item = await storage.updateInventoryItem(Number(req.params.id), req.body);
+    res.json(item);
+  });
+
+  app.delete("/api/inventory/:id", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
+    await storage.deleteInventoryItem(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  // ── Service Requests ─────────────────────────────────────────────────────
+  app.get("/api/service-requests", jwtAuth, async (req: Request, res: Response) => {
+    const { role, userId } = (req as any).user;
+    const requests = await storage.getAllServiceRequests(role, userId);
     res.json(requests);
   });
 
-  app.get(api.serviceRequests.get.path, async (req, res) => {
-    const id = parseId(req.params.id);
-
-    const request = await storage.getServiceRequestWithDetails(id);
-
-    if (!request) {
-      return res.status(404).json({ message: "Not found" });
-    }
-
-    res.json(request);
+  app.get("/api/service-requests/:id", jwtAuth, async (req: Request, res: Response) => {
+    const detail = await storage.getServiceRequestWithDetails(Number(req.params.id));
+    if (!detail) return res.status(404).json({ message: "Not found" });
+    res.json(detail);
   });
 
-  app.post(api.serviceRequests.create.path, requireRole("admin"), async (req, res) => {
+  app.post("/api/service-requests", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
     try {
-      const input = api.serviceRequests.create.input.parse(req.body);
+      const request = await storage.createServiceRequest(req.body);
 
-      const request = await storage.createServiceRequest(input);
-
-      res.status(201).json(request);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+      // Create parts_requested if provided
+      if (req.body.partsRequested && Array.isArray(req.body.partsRequested)) {
+        await storage.addPartsRequested(request.id, req.body.partsRequested);
       }
 
-      res.status(500).json({ message: "Error creating request" });
+      res.status(201).json(request);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
     }
   });
 
-  app.put(api.serviceRequests.update.path, async (req, res) => {
-    const id = parseId(req.params.id);
-
-    const input = api.serviceRequests.update.input.parse(req.body);
-
-    const request = await storage.updateServiceRequest(id, input as any);
-
+  app.put("/api/service-requests/:id", jwtAuth, async (req: Request, res: Response) => {
+    const request = await storage.updateServiceRequest(Number(req.params.id), req.body);
     res.json(request);
   });
 
-  app.patch(api.serviceRequests.assign.path, requireRole("admin"), async (req, res) => {
-    const id = parseId(req.params.id);
-
-    const { engineerId } = req.body;
-
-    const request = await storage.updateServiceRequest(id, {
-      assignedToId: engineerId,
-    });
-
+  app.patch("/api/service-requests/:id/assign", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
+    const request = await storage.assignEngineer(Number(req.params.id), req.body.engineerId);
     res.json(request);
   });
 
-  /*
-  |--------------------------------------------------------------------------
-  | Service Images
-  |--------------------------------------------------------------------------
-  */
+  // ── Documents ────────────────────────────────────────────────────────────
+  app.post("/api/service-requests/:id/documents", jwtAuth, async (req: Request, res: Response) => {
+    const { type, fileUrl } = req.body;
+    const uploadedBy = (req as any).user.userId;
+    const doc = await storage.addDocument(Number(req.params.id), type, fileUrl, uploadedBy);
+    res.status(201).json(doc);
+  });
 
-  app.post(api.serviceImages.upload.path, async (req, res) => {
-    const id = parseId(req.params.id);
+  app.get("/api/service-requests/:id/documents", jwtAuth, async (req: Request, res: Response) => {
+    const docs = await storage.getDocuments(Number(req.params.id));
+    res.json(docs);
+  });
 
-    const { imageUrl, type } = req.body;
-
-    const image = await storage.addServiceImage({
-      serviceRequestId: id,
-      imageUrl,
-      type,
-    });
-
+  // ── Images ───────────────────────────────────────────────────────────────
+  app.post("/api/service-requests/:id/images", jwtAuth, async (req: Request, res: Response) => {
+    const { fileUrl, type } = req.body;
+    const image = await storage.addImage(Number(req.params.id), type, fileUrl);
     res.status(201).json(image);
   });
 
-  /*
-  |--------------------------------------------------------------------------
-  | Parts Consumed
-  |--------------------------------------------------------------------------
-  */
-
-  app.post(api.partsConsumed.add.path, async (req, res) => {
-    const id = parseId(req.params.id);
-
-    const { inventoryId, quantity } = req.body;
-
+  // ── Parts Consumed ───────────────────────────────────────────────────────
+  app.post("/api/service-requests/:id/parts", jwtAuth, async (req: Request, res: Response) => {
     try {
-      const part = await storage.addPartConsumed({
-        serviceRequestId: id,
-        inventoryId,
-        quantity,
-      });
-
-      res.status(201).json(part);
-    } catch (e: any) {
-      res.status(400).json({ message: e.message });
+      const consumed = await storage.consumePart(Number(req.params.id), req.body.inventoryId, req.body.quantity);
+      res.status(201).json(consumed);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
     }
   });
 
-  /*
-  |--------------------------------------------------------------------------
-  | Engineer Expenses
-  |--------------------------------------------------------------------------
-  */
-
-  app.get("/api/service-requests/:id/expenses", async (req: any, res) => {
-    try {
-      const id = parseId(req.params.id);
-
-      const expenses = await storage.getExpenses(id);
-
-      res.json(expenses);
-    } catch (e: any) {
-      res.status(500).json({ message: e.message });
-    }
+  // ── Expenses ─────────────────────────────────────────────────────────────
+  app.get("/api/service-requests/:id/expenses", jwtAuth, async (req: Request, res: Response) => {
+    res.json(await storage.getExpenses(Number(req.params.id)));
   });
 
-  app.post("/api/service-requests/:id/expenses", async (req: any, res) => {
+  app.post("/api/service-requests/:id/expenses", jwtAuth, async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated || !req.isAuthenticated()) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
-
-      const userId = req.user?.claims?.sub;
-      const profile = userId ? await storage.getProfile(userId) : null;
-
-      if (!profile || profile.role !== "engineer") {
-        return res.status(403).json({
-          message: "Only engineers can add expenses",
-        });
-      }
-
-      const id = parseId(req.params.id);
-
-      const data = z
-        .object({
-          date: z.string(),
-          description: z.string().min(1),
-          amount: z.string(),
-          billStatus: z.boolean(),
-          billImageUrl: z.string().nullable().optional(),
-          onlineSlip: z.boolean(),
-          onlineSlipImageUrl: z.string().nullable().optional(),
-          modeOfTravel: z.enum(["Train", "Bus", "Auto", "Flight"]),
-          baseLocation: z.string().min(1),
-          remark: z.string().nullable().optional(),
-        })
-        .parse(req.body);
-
-      if (data.billStatus && !data.billImageUrl) {
-        return res.status(400).json({
-          message: "Bill image required when bill status YES",
-        });
-      }
-
-      if (data.onlineSlip && !data.onlineSlipImageUrl) {
-        return res.status(400).json({
-          message: "Online slip image required when online slip YES",
-        });
-      }
-
-      const modeOfPayment = data.onlineSlip ? "Online" : "Cash";
-
-      const expense = await storage.addExpense({
-        serviceRequestId: id,
-        engineerId: userId,
-        date: new Date(data.date),
-        description: data.description,
-        amount: data.amount,
-        billStatus: data.billStatus,
-        billImageUrl: data.billStatus ? data.billImageUrl || null : null,
-        onlineSlip: data.onlineSlip,
-        onlineSlipImageUrl: data.onlineSlip
-          ? data.onlineSlipImageUrl || null
-          : null,
-        modeOfPayment,
-        modeOfTravel: data.modeOfTravel,
-        baseLocation: data.baseLocation,
-        remark: data.remark || null,
-      });
-
+      const expense = await storage.addExpense(Number(req.params.id), req.body);
       res.status(201).json(expense);
-    } catch (e: any) {
-      if (e instanceof z.ZodError) {
-        return res.status(400).json({
-          message: e.errors[0].message,
-        });
-      }
-
-      res.status(500).json({ message: e.message });
-    }
-  });
-
-    /*
-  |--------------------------------------------------------------------------
-  | Update Expense
-  |--------------------------------------------------------------------------
-  */
-
-  app.put("/api/service-requests/:id/expenses/:expenseId", async (req: any, res) => {
-    try {
-      if (!req.isAuthenticated || !req.isAuthenticated()) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
-
-      const userId = req.user?.claims?.sub;
-      const profile = userId ? await storage.getProfile(userId) : null;
-
-      if (!profile || profile.role !== "engineer") {
-        return res.status(403).json({
-          message: "Only engineers can edit expenses",
-        });
-      }
-
-      const expenseId = parseId(req.params.expenseId);
-
-      const data = z.object({
-        date: z.string(),
-        description: z.string().min(1),
-        amount: z.string(),
-        billStatus: z.boolean(),
-        billImageUrl: z.string().nullable().optional(),
-        onlineSlip: z.boolean(),
-        onlineSlipImageUrl: z.string().nullable().optional(),
-        modeOfTravel: z.enum(["Train", "Bus", "Auto", "Flight"]),
-        baseLocation: z.string().min(1),
-        remark: z.string().nullable().optional(),
-      }).parse(req.body);
-
-      const modeOfPayment = data.onlineSlip ? "Online" : "Cash";
-
-      const updated = await storage.updateExpense(expenseId, {
-        date: new Date(data.date),
-        description: data.description,
-        amount: data.amount,
-        billStatus: data.billStatus,
-        billImageUrl: data.billStatus ? data.billImageUrl || null : null,
-        onlineSlip: data.onlineSlip,
-        onlineSlipImageUrl: data.onlineSlip
-          ? data.onlineSlipImageUrl || null
-          : null,
-        modeOfPayment,
-        modeOfTravel: data.modeOfTravel,
-        baseLocation: data.baseLocation,
-        remark: data.remark || null,
-      });
-
-      if (!updated) {
-        return res.status(404).json({ message: "Expense not found" });
-      }
-
-      res.json(updated);
-
-    } catch (e: any) {
-      if (e instanceof z.ZodError) {
-        return res.status(400).json({ message: e.errors[0].message });
-      }
-
-      res.status(500).json({ message: e.message });
-    }
-  });
-
-  /*
-  |--------------------------------------------------------------------------
-  | Delete Expense
-  |--------------------------------------------------------------------------
-  */
-
-  app.delete("/api/service-requests/:id/expenses/:expenseId", async (req: any, res) => {
-    try {
-      if (!req.isAuthenticated || !req.isAuthenticated()) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
-
-      const userId = req.user?.claims?.sub;
-      const profile = userId ? await storage.getProfile(userId) : null;
-
-      if (!profile || profile.role !== "engineer") {
-        return res.status(403).json({
-          message: "Only engineers can delete expenses",
-        });
-      }
-
-      const expenseId = parseId(req.params.expenseId);
-
-      await storage.deleteExpense(expenseId);
-
-      res.json({ success: true });
-
-    } catch (e: any) {
-      res.status(500).json({ message: e.message });
-    }
-  });
-
-  /*
-  |--------------------------------------------------------------------------
-  | Dashboard Stats
-  |--------------------------------------------------------------------------
-  */
-
-  app.get(api.reports.dashboard.path, async (req: any, res) => {
-    let engineerId: string | undefined;
-
-    if (req.user) {
-      const userId = req.user.claims.sub;
-      const profile = await storage.getProfile(userId);
-
-      if (profile && profile.role === "engineer") {
-        engineerId = userId;
-      }
-    }
-
-    const stats = await storage.getDashboardStats(engineerId);
-
-    res.json(stats);
-  });
-
-  /*
-  |--------------------------------------------------------------------------
-  | Users
-  |--------------------------------------------------------------------------
-  */
-
-  app.get(api.users.list.path, requireRole("admin"), async (req, res) => {
-    const profiles = await storage.getAllProfiles();
-    res.json(profiles);
-  });
-
-  app.patch("/api/users/:id", requireRole("admin"), async (req, res) => {
-    try {
-      const data = z.object({
-        name: z.string().min(1).optional(),
-        email: z.string().email().optional(),
-        role: z.enum(["admin", "engineer", "account", "logistics"]).optional(),
-      }).parse(req.body);
-
-      const profile = await storage.updateProfile(parseId(req.params.id), data);
-
-      if (!profile) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      res.json(profile);
-
     } catch (err: any) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
-      }
-
-      res.status(400).json({ message: "Invalid data" });
+      res.status(400).json({ message: err.message });
     }
   });
 
-  /*
-  |--------------------------------------------------------------------------
-  | Invoice Submission (Accounts)
-  |--------------------------------------------------------------------------
-  */
-
-  const invoiceSubmitSchema = z.object({
-    invoiceNumber: z.string().min(1),
-    challanNumber: z.string().optional(),
-    invoiceValue: z.string().min(1),
-    reimbursementAmount: z.string().optional(),
-    invoiceType: z.enum(["L1", "L2", "L3"]),
-    invoiceDate: z.string().min(1),
+  app.put("/api/service-requests/:id/expenses/:expenseId", jwtAuth, async (req: Request, res: Response) => {
+    const expense = await storage.updateExpense(Number(req.params.expenseId), req.body);
+    res.json(expense);
   });
 
-  app.patch("/api/service-requests/:id/invoice", async (req: any, res) => {
+  app.delete("/api/service-requests/:id/expenses/:expenseId", jwtAuth, async (req: Request, res: Response) => {
+    await storage.deleteExpense(Number(req.params.expenseId));
+    res.json({ ok: true });
+  });
+
+  // ── Invoices ─────────────────────────────────────────────────────────────
+  app.post("/api/service-requests/:id/invoice", jwtAuth, requireRole("admin", "account"), async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
-
-      const userId = req.user.claims.sub;
-      const profile = await storage.getProfile(userId);
-
-      if (!profile || (profile.role !== "account" && profile.role !== "admin")) {
-        return res.status(403).json({
-          message: "Only accounts team can generate invoices",
-        });
-      }
-
-      const data = invoiceSubmitSchema.parse(req.body);
-
-      const updated = await storage.updateServiceRequest(parseId(req.params.id), {
-        invoiceNumber: data.invoiceNumber,
-        challanNumber: data.challanNumber || null,
-        invoiceValue: data.invoiceValue,
-        reimbursementAmount: data.reimbursementAmount || null,
-        invoiceType: data.invoiceType,
-        invoiceDate: new Date(data.invoiceDate),
-        status: "billed",
-      } as any);
-
-      res.json(updated);
-
+      const invoice = await storage.createInvoice(Number(req.params.id), req.body);
+      res.status(201).json(invoice);
     } catch (err: any) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
-      }
-
-      res.status(500).json({ message: err.message });
+      res.status(400).json({ message: err.message });
     }
   });
 
-  /*
-  |--------------------------------------------------------------------------
-  | Logistics Update
-  |--------------------------------------------------------------------------
-  */
-
-  const logisticsSubmitSchema = z.object({
-    shippingPartnerName: z.string().min(1),
-    docketDetails: z.string().optional(),
-    shippingDate: z.string().min(1),
-    shippingStatus: z.enum(["shipped", "in_transit", "delivered"]),
+  app.get("/api/service-requests/:id/invoice", jwtAuth, async (req: Request, res: Response) => {
+    const invoice = await storage.getInvoice(Number(req.params.id));
+    res.json(invoice);
   });
 
-  app.patch("/api/service-requests/:id/logistics", async (req: any, res) => {
+  // ── Logistics ────────────────────────────────────────────────────────────
+  app.patch("/api/service-requests/:id/logistics", jwtAuth, requireRole("admin", "logistics"), async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
-
-      const userId = req.user.claims.sub;
-      const profile = await storage.getProfile(userId);
-
-      if (!profile || (profile.role !== "logistics" && profile.role !== "admin")) {
-        return res.status(403).json({
-          message: "Only logistics team can update shipping",
-        });
-      }
-
-      const data = logisticsSubmitSchema.parse(req.body);
-
-      const updated = await storage.updateServiceRequest(parseId(req.params.id), {
-        shippingPartnerName: data.shippingPartnerName,
-        docketDetails: data.docketDetails || null,
-        shippingDate: new Date(data.shippingDate),
-        shippingStatus: data.shippingStatus,
-      } as any);
-
-      res.json(updated);
-
+      const result = await storage.upsertLogistics(Number(req.params.id), req.body);
+      res.json(result);
     } catch (err: any) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
-      }
-
-      res.status(500).json({ message: err.message });
+      res.status(400).json({ message: err.message });
     }
   });
 
-  /*
-  |--------------------------------------------------------------------------
-  | Pincode Lookup
-  |--------------------------------------------------------------------------
-  */
+  // ── Billed Requests ──────────────────────────────────────────────────────
+  app.get("/api/billed-requests", jwtAuth, requireRole("admin", "account"), async (_req: Request, res: Response) => {
+    res.json(await storage.getBilledRequests());
+  });
 
-  app.get("/api/pincode/:pincode", async (req, res) => {
-    const { pincode } = req.params;
+  // ── Dashboard Stats ──────────────────────────────────────────────────────
+  app.get("/api/dashboard/stats", jwtAuth, async (req: Request, res: Response) => {
+    const { role, userId } = (req as any).user;
+    res.json(await storage.getDashboardStats(role, userId));
+  });
 
-    if (!/^\d{6}$/.test(pincode)) {
-      return res.status(400).json({
-        message: "Invalid pincode",
-      });
-    }
+  // ── File Upload ──────────────────────────────────────────────────────────
+  app.post("/api/upload", jwtAuth, upload.single("file"), (req: Request, res: Response) => {
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+    const fileUrl = `/uploads/${req.file.filename}`;
+    res.json({ url: fileUrl });
+  });
 
+  // ── Pincode Lookup ───────────────────────────────────────────────────────
+  app.get("/api/pincode/:pincode", async (req: Request, res: Response) => {
     try {
-      const response = await fetch(
-        `https://api.postalpincode.in/pincode/${pincode}`
-      );
-
-      const data = await response.json();
-
-      if (data && data[0] && data[0].Status === "Success") {
+      const resp = await fetch(`https://api.postalpincode.in/pincode/${req.params.pincode}`);
+      const data = await resp.json();
+      if (data?.[0]?.Status === "Success" && data[0].PostOffice?.length > 0) {
         const po = data[0].PostOffice[0];
-
-        return res.json({
-          success: true,
-          state: po.State,
-          district: po.District,
-          pincode,
-        });
+        res.json({ success: true, state: po.State, district: po.District });
+      } else {
+        res.json({ success: false });
       }
-
+    } catch {
       res.json({ success: false });
-
-    } catch (err) {
-      res.status(500).json({
-        success: false,
-      });
     }
   });
 
-  /*
-  |--------------------------------------------------------------------------
-  | Logout
-  |--------------------------------------------------------------------------
-  */
+  // ── PDF Report ───────────────────────────────────────────────────────────
+  app.get("/api/service-requests/:id/report", jwtAuth, async (req: Request, res: Response) => {
+    try {
+      const detail = await storage.getServiceRequestWithDetails(Number(req.params.id));
+      if (!detail) return res.status(404).json({ message: "Not found" });
 
-  app.get("/api/logout", (req, res) => {
-    res.redirect("/");
+      const doc = new PDFDocument({ size: "A4", margin: 50 });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename=SR-${detail.id}-report.pdf`);
+      doc.pipe(res);
+
+      // Header
+      doc.fontSize(20).font("Helvetica-Bold").text("DroneFix Service Report", { align: "center" });
+      doc.moveDown();
+      doc.fontSize(10).font("Helvetica").text(`SR #${detail.id.toString().padStart(4, "0")}`, { align: "center" });
+      doc.moveDown(2);
+
+      // Service Details
+      doc.fontSize(14).font("Helvetica-Bold").text("Service Details");
+      doc.moveDown(0.5);
+      doc.fontSize(10).font("Helvetica");
+      const info = [
+        ["Pilot Name", detail.pilotName],
+        ["Drone Number", detail.droneNumber],
+        ["Serial Number", detail.serialNumber],
+        ["Contact", detail.contactDetails],
+        ["Address", detail.address],
+        ["Location", [detail.district, detail.state, detail.pincode].filter(Boolean).join(", ")],
+        ["Service Type", detail.serviceType],
+        ["Status", detail.status],
+        ["Complaint", detail.complaint],
+      ];
+      for (const [label, value] of info) {
+        doc.font("Helvetica-Bold").text(`${label}: `, { continued: true }).font("Helvetica").text(String(value || "-"));
+      }
+
+      // Documents
+      if (detail.documents?.length > 0) {
+        doc.moveDown(2).fontSize(14).font("Helvetica-Bold").text("Documents");
+        doc.moveDown(0.5).fontSize(10).font("Helvetica");
+        for (const d of detail.documents) {
+          doc.text(`• ${d.type}: ${d.fileUrl}`);
+        }
+      }
+
+      // Parts Consumed
+      if (detail.partsConsumed?.length > 0) {
+        doc.moveDown(2).fontSize(14).font("Helvetica-Bold").text("Parts Consumed");
+        doc.moveDown(0.5).fontSize(10).font("Helvetica");
+        for (const p of detail.partsConsumed) {
+          doc.text(`• ${(p as any).itemName || "Item"} — Qty: ${p.quantityUsed}`);
+        }
+      }
+
+      // Expenses
+      if (detail.expenses?.length > 0) {
+        doc.moveDown(2).fontSize(14).font("Helvetica-Bold").text("Expenses");
+        doc.moveDown(0.5).fontSize(10).font("Helvetica");
+        let totalExpense = 0;
+        for (const e of detail.expenses) {
+          const amt = Number(e.amount);
+          totalExpense += amt;
+          doc.text(`• ${e.description} — ₹${amt.toFixed(2)} (${e.paymentMode})`);
+        }
+        doc.font("Helvetica-Bold").text(`Total Expenses: ₹${totalExpense.toFixed(2)}`);
+      }
+
+      // Invoice
+      if (detail.invoice) {
+        doc.moveDown(2).fontSize(14).font("Helvetica-Bold").text("Invoice Details");
+        doc.moveDown(0.5).fontSize(10).font("Helvetica");
+        doc.text(`Invoice #: ${detail.invoice.invoiceNumber}`);
+        doc.text(`Challan #: ${detail.invoice.challanNumber || "-"}`);
+        doc.text(`Value: ₹${Number(detail.invoice.invoiceValue).toFixed(2)}`);
+        if (detail.invoice.reimbursementAmount) {
+          doc.text(`Reimbursement: ₹${Number(detail.invoice.reimbursementAmount).toFixed(2)}`);
+        }
+      }
+
+      // Logistics
+      if (detail.logistics) {
+        doc.moveDown(2).fontSize(14).font("Helvetica-Bold").text("Shipping Details");
+        doc.moveDown(0.5).fontSize(10).font("Helvetica");
+        doc.text(`Partner: ${detail.logistics.shippingPartner}`);
+        doc.text(`Docket: ${detail.logistics.docketNumber || "-"}`);
+        doc.text(`Status: ${detail.logistics.shippingStatus || "-"}`);
+      }
+
+      doc.end();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
-  return httpServer;
+  // Serve uploaded files
+  app.use("/uploads", (await import("express")).default.static(uploadsDir));
 }

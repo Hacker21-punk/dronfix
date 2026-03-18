@@ -1,47 +1,71 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { User } from "@shared/models/auth";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-async function fetchUser(): Promise<User | null> {
-  const response = await fetch("/api/auth/me", {
-    credentials: "include",
+export interface LoginData {
+  email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  token: string;
+  user: any;
+  profile: any;
+}
+
+async function loginRequest(data: LoginData): Promise<LoginResponse> {
+  const response = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
   });
 
-  if (response.status === 401) {
-    return null;
-  }
-
   if (!response.ok) {
-    throw new Error(`${response.status}: ${response.statusText}`);
+    const err = await response.json().catch(() => ({ message: "Login failed" }));
+    throw new Error(err.message || "Login failed");
   }
 
   return response.json();
 }
 
-async function logout(): Promise<void> {
-  window.location.href = "/api/logout";
-}
-
 export function useAuth() {
   const queryClient = useQueryClient();
-  const { data: user, isLoading } = useQuery<User | null>({
-    queryKey: ["/api/auth/user"],
-    queryFn: fetchUser,
-    retry: false,
-    staleTime: 1000 * 60 * 5, // 5 minutes
-  });
 
-  const logoutMutation = useMutation({
-    mutationFn: logout,
-    onSuccess: () => {
-      queryClient.setQueryData(["/api/auth/user"], null);
+  const token = localStorage.getItem("token");
+  const profileStr = localStorage.getItem("profile");
+  let profile: any = null;
+  try {
+    if (profileStr && profileStr !== "undefined" && profileStr !== "null") {
+      profile = JSON.parse(profileStr);
+    }
+  } catch {
+    // Clear corrupted profile data
+    localStorage.removeItem("profile");
+  }
+
+  const loginMutation = useMutation({
+    mutationFn: loginRequest,
+    onSuccess: (data) => {
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("profile", JSON.stringify(data.user));
+      queryClient.clear();
+      window.location.href = "/";
     },
   });
 
+  const logout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("profile");
+    queryClient.clear();
+    window.location.href = "/auth";
+  };
+
   return {
-    user,
-    isLoading,
-    isAuthenticated: !!user,
-    logout: logoutMutation.mutate,
-    isLoggingOut: logoutMutation.isPending,
+    user: profile,
+    isLoading: false,
+    isAuthenticated: !!token,
+    login: loginMutation.mutate,
+    loginError: loginMutation.error?.message,
+    isLoggingIn: loginMutation.isPending,
+    logout,
+    isLoggingOut: false,
   };
 }

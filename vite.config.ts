@@ -28,6 +28,12 @@ export default defineConfig({
   server: {
     fs: {
       strict: true,
+      allow: [
+        path.resolve(__dirname, "client"),
+        path.resolve(__dirname, "shared"),
+        path.resolve(__dirname, "attached_assets"),
+        path.resolve(__dirname, "node_modules"),
+      ],
       deny: ["**/.*"],
     },
   },

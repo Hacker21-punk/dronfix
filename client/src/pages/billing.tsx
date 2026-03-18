@@ -10,7 +10,7 @@ import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import type { ServiceRequest } from "@shared/schema";
 
-type BilledRequest = ServiceRequest & { assignedTo?: { name: string } };
+type BilledRequest = ServiceRequest & { assignedTo?: { name: string }; invoice?: any };
 
 function getFinancialYear(date: Date): string {
   const month = date.getMonth();
@@ -55,7 +55,7 @@ export default function BillingPage() {
     if (!billedRequests) return [];
     const fys = new Set<string>();
     billedRequests.forEach((r) => {
-      const date = r.invoiceDate ? new Date(r.invoiceDate) : r.createdAt ? new Date(r.createdAt) : null;
+      const date = r.invoice?.invoiceDate ? new Date(r.invoice?.invoiceDate) : r.createdAt ? new Date(r.createdAt) : null;
       if (date) fys.add(getFinancialYear(date));
     });
     return Array.from(fys).sort().reverse();
@@ -69,7 +69,7 @@ export default function BillingPage() {
     if (selectedFY !== "all") {
       const { start, end } = getFinancialYearRange(selectedFY);
       filtered = filtered.filter((r) => {
-        const date = r.invoiceDate ? new Date(r.invoiceDate) : null;
+        const date = r.invoice?.invoiceDate ? new Date(r.invoice?.invoiceDate) : null;
         return date && date >= start && date <= end;
       });
     }
@@ -77,22 +77,22 @@ export default function BillingPage() {
     if (selectedMonth !== "all") {
       const monthIndex = parseInt(selectedMonth);
       filtered = filtered.filter((r) => {
-        const date = r.invoiceDate ? new Date(r.invoiceDate) : null;
+        const date = r.invoice?.invoiceDate ? new Date(r.invoice?.invoiceDate) : null;
         return date && date.getMonth() === monthIndex;
       });
     }
 
     if (selectedInvoiceType !== "all") {
-      filtered = filtered.filter((r) => r.invoiceType === selectedInvoiceType);
+      filtered = filtered.filter((r) => r.invoice?.invoiceType === selectedInvoiceType);
     }
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter((r) =>
-        r.invoiceNumber?.toLowerCase().includes(q) ||
+        r.invoice?.invoiceNumber?.toLowerCase().includes(q) ||
         r.pilotName?.toLowerCase().includes(q) ||
-        r.droneNo?.toLowerCase().includes(q) ||
-        r.challanNumber?.toLowerCase().includes(q) ||
+        r.droneNumber?.toLowerCase().includes(q) ||
+        r.invoice?.challanNumber?.toLowerCase().includes(q) ||
         r.id.toString().includes(q)
       );
     }
@@ -100,11 +100,11 @@ export default function BillingPage() {
     filtered.sort((a, b) => {
       let valA: any, valB: any;
       if (sortField === "invoiceDate") {
-        valA = a.invoiceDate ? new Date(a.invoiceDate).getTime() : 0;
-        valB = b.invoiceDate ? new Date(b.invoiceDate).getTime() : 0;
+        valA = a.invoice?.invoiceDate ? new Date(a.invoice?.invoiceDate).getTime() : 0;
+        valB = b.invoice?.invoiceDate ? new Date(b.invoice?.invoiceDate).getTime() : 0;
       } else if (sortField === "invoiceValue") {
-        valA = parseFloat(a.invoiceValue || "0");
-        valB = parseFloat(b.invoiceValue || "0");
+        valA = parseFloat(a.invoice?.invoiceValue || "0");
+        valB = parseFloat(b.invoice?.invoiceValue || "0");
       } else if (sortField === "id") {
         valA = a.id;
         valB = b.id;
@@ -120,11 +120,11 @@ export default function BillingPage() {
   }, [billedRequests, selectedFY, selectedMonth, selectedInvoiceType, searchQuery, sortField, sortDir]);
 
   const summary = useMemo(() => {
-    const totalValue = filteredRequests.reduce((sum, r) => sum + parseFloat(r.invoiceValue || "0"), 0);
-    const totalReimbursement = filteredRequests.reduce((sum, r) => sum + parseFloat(r.reimbursementAmount || "0"), 0);
-    const countL1 = filteredRequests.filter(r => r.invoiceType === "L1").length;
-    const countL2 = filteredRequests.filter(r => r.invoiceType === "L2").length;
-    const countL3 = filteredRequests.filter(r => r.invoiceType === "L3").length;
+    const totalValue = filteredRequests.reduce((sum, r) => sum + parseFloat(r.invoice?.invoiceValue || "0"), 0);
+    const totalReimbursement = filteredRequests.reduce((sum, r) => sum + parseFloat(r.invoice?.reimbursementAmount || "0"), 0);
+    const countL1 = filteredRequests.filter(r => r.invoice?.invoiceType === "L1").length;
+    const countL2 = filteredRequests.filter(r => r.invoice?.invoiceType === "L2").length;
+    const countL3 = filteredRequests.filter(r => r.invoice?.invoiceType === "L3").length;
     return { totalValue, totalReimbursement, countL1, countL2, countL3, total: filteredRequests.length };
   }, [filteredRequests]);
 
@@ -141,14 +141,14 @@ export default function BillingPage() {
     const headers = ["SR#", "Invoice No", "Challan No", "Pilot Name", "Drone No", "Invoice Type", "Invoice Value", "Reimbursement", "Invoice Date"];
     const rows = filteredRequests.map(r => [
       r.id,
-      r.invoiceNumber || "",
-      r.challanNumber || "",
+      r.invoice?.invoiceNumber || "",
+      r.invoice?.challanNumber || "",
       r.pilotName,
-      r.droneNo,
-      r.invoiceType || "",
-      r.invoiceValue || "0",
-      r.reimbursementAmount || "0",
-      r.invoiceDate ? new Date(r.invoiceDate).toLocaleDateString("en-IN") : "",
+      r.droneNumber,
+      r.invoice?.invoiceType || "",
+      r.invoice?.invoiceValue || "0",
+      r.invoice?.reimbursementAmount || "0",
+      r.invoice?.invoiceDate ? new Date(r.invoice?.invoiceDate).toLocaleDateString("en-IN") : "",
     ]);
     const csv = [headers.join(","), ...rows.map(row => row.map(v => `"${v}"`).join(","))].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -350,21 +350,21 @@ export default function BillingPage() {
                   filteredRequests.map((r) => (
                     <tr key={r.id} className="border-b last:border-0 hover-elevate" data-testid={`row-billed-${r.id}`}>
                       <td className="p-3 font-medium">#{r.id}</td>
-                      <td className="p-3" data-testid={`text-invoice-no-${r.id}`}>{r.invoiceNumber || "-"}</td>
-                      <td className="p-3">{r.challanNumber || "-"}</td>
+                      <td className="p-3" data-testid={`text-invoice-no-${r.id}`}>{r.invoice?.invoiceNumber || "-"}</td>
+                      <td className="p-3">{r.invoice?.challanNumber || "-"}</td>
                       <td className="p-3">{r.pilotName}</td>
-                      <td className="p-3">{r.droneNo}</td>
+                      <td className="p-3">{r.droneNumber}</td>
                       <td className="p-3">
-                        <Badge variant="outline" data-testid={`badge-type-${r.id}`}>{r.invoiceType || "-"}</Badge>
+                        <Badge variant="outline" data-testid={`badge-type-${r.id}`}>{r.invoice?.invoiceType || "-"}</Badge>
                       </td>
                       <td className="p-3 font-medium" data-testid={`text-value-${r.id}`}>
-                        {r.invoiceValue ? formatCurrency(parseFloat(r.invoiceValue)) : "-"}
+                        {r.invoice?.invoiceValue ? formatCurrency(parseFloat(r.invoice?.invoiceValue)) : "-"}
                       </td>
                       <td className="p-3 text-muted-foreground">
-                        {r.reimbursementAmount ? formatCurrency(parseFloat(r.reimbursementAmount)) : "-"}
+                        {r.invoice?.reimbursementAmount ? formatCurrency(parseFloat(r.invoice?.reimbursementAmount)) : "-"}
                       </td>
                       <td className="p-3 text-muted-foreground" data-testid={`text-date-${r.id}`}>
-                        {r.invoiceDate ? new Date(r.invoiceDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "-"}
+                        {r.invoice?.invoiceDate ? new Date(r.invoice?.invoiceDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "-"}
                       </td>
                       <td className="p-3">
                         <Link href={`/requests/${r.id}`}>

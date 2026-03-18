@@ -38,7 +38,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { EngineerExpense } from "@shared/schema";
+import type { Expense } from "@shared/schema";
 
 export default function ServiceRequestDetail() {
   const { id } = useParams();
@@ -122,7 +122,7 @@ export default function ServiceRequestDetail() {
                    <h4 className="text-sm font-medium text-muted-foreground mb-1">Pilot Details</h4>
                    <p className="font-medium text-lg">{request.pilotName}</p>
                    <p className="text-sm">{request.contactDetails}</p>
-                   <p className="text-sm text-muted-foreground">{request.pilotAddress}</p>
+                   <p className="text-sm text-muted-foreground">{request.address}</p>
                    {(request.state || request.district || request.pincode) && (
                      <p className="text-sm text-muted-foreground">
                        {[request.district, request.state, request.pincode ? `- ${request.pincode}` : ''].filter(Boolean).join(', ')}
@@ -131,8 +131,8 @@ export default function ServiceRequestDetail() {
                 </div>
                 <div>
                    <h4 className="text-sm font-medium text-muted-foreground mb-1">Drone Details</h4>
-                   <p className="font-medium text-lg">{request.droneNo} <span className="text-sm font-normal text-muted-foreground">({request.serviceType})</span></p>
-                   <p className="text-sm font-mono">SN: {request.droneSerial}</p>
+                   <p className="font-medium text-lg">{request.droneNumber} <span className="text-sm font-normal text-muted-foreground">({request.serviceType})</span></p>
+                   <p className="text-sm font-mono">SN: {request.serialNumber}</p>
                 </div>
               </div>
               <Separator />
@@ -163,9 +163,9 @@ export default function ServiceRequestDetail() {
 
           {/* Engineer Expenses (Only visible for engineers) */}
           {role === 'engineer' && (
-            <EngineerExpensesSection 
+            <ExpensesSection 
               requestId={requestId} 
-              droneNo={request.droneNo} 
+              droneNumber={request.droneNumber} 
               baseLocation={request.state || ''} 
             />
           )}
@@ -182,14 +182,14 @@ export default function ServiceRequestDetail() {
           <Card>
             <CardHeader><CardTitle>Assignment</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              {request.assignedToId ? (
+              {request.assignedEngineerId ? (
                 <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
                   <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                     <User className="h-5 w-5" />
                   </div>
                   <div>
                     <p className="font-medium">Assigned Engineer</p>
-                    <p className="text-sm text-muted-foreground">ID: {request.assignedToId}</p>
+                    <p className="text-sm text-muted-foreground">ID: {request.assignedEngineerId}</p>
                   </div>
                 </div>
               ) : (
@@ -199,7 +199,7 @@ export default function ServiceRequestDetail() {
               )}
 
               {role === 'admin' && (
-                <AssignEngineerDialog requestId={requestId} currentEngineerId={request.assignedToId} />
+                <AssignEngineerDialog requestId={requestId} currentEngineerId={request.assignedEngineerId} />
               )}
               
               {role === 'engineer' && request.status === 'pending' && !request.tentativeServiceDate && (
@@ -279,7 +279,7 @@ export default function ServiceRequestDetail() {
           )}
 
           {/* Logistics / Shipping Details */}
-          {(role === 'logistics' || role === 'admin' || request.shippingPartnerName) && (
+          {(role === 'logistics' || role === 'admin' || request.shippingPartner) && (
             <LogisticsSection requestId={requestId} request={request} role={role} />
           )}
 
@@ -304,7 +304,7 @@ function AssignEngineerDialog({ requestId, currentEngineerId }: { requestId: num
   const [open, setOpen] = useState(false);
   const [selectedEngineer, setSelectedEngineer] = useState(currentEngineerId || "");
 
-  const engineers = users?.filter(u => u.role === 'engineer') || [];
+  const engineers = users?.filter((u: any) => u.role === 'engineer') || [];
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -320,7 +320,7 @@ function AssignEngineerDialog({ requestId, currentEngineerId }: { requestId: num
           <Select value={selectedEngineer} onValueChange={setSelectedEngineer}>
             <SelectTrigger><SelectValue placeholder="Select engineer" /></SelectTrigger>
             <SelectContent>
-              {engineers.map(eng => (
+              {engineers.map((eng: any) => (
                 <SelectItem key={eng.userId} value={eng.userId!}>{eng.name}</SelectItem>
               ))}
             </SelectContent>
@@ -353,8 +353,8 @@ function AcceptRequestDialog({ requestId }: { requestId: number }) {
         <Button onClick={() => updateMutation.mutate({ 
           id: requestId, 
           status: 'accepted', 
-          tentativeServiceDate: date ? new Date(date).toISOString() : undefined
-        }, { onSuccess: () => setOpen(false) })}>
+          tentativeServiceDate: date ? new Date(date) : undefined
+        } as any, { onSuccess: () => setOpen(false) })}>
           Confirm Acceptance
         </Button>
       </DialogContent>
@@ -454,8 +454,8 @@ function GenerateInvoiceDialog({ requestId }: { requestId: number }) {
 function LogisticsSection({ requestId, request, role }: { requestId: number, request: any, role: string }) {
   const logisticsMutation = useSubmitLogistics();
   const [open, setOpen] = useState(false);
-  const [shippingPartnerName, setShippingPartnerName] = useState(request.shippingPartnerName || "");
-  const [docketDetails, setDocketDetails] = useState(request.docketDetails || "");
+  const [shippingPartnerName, setShippingPartnerName] = useState(request.shippingPartner || "");
+  const [docketDetails, setDocketDetails] = useState(request.docketNumber || "");
   const [shippingDate, setShippingDate] = useState(request.shippingDate ? format(new Date(request.shippingDate), 'yyyy-MM-dd') : "");
   const [shippingStatus, setShippingStatus] = useState(request.shippingStatus || "");
 
@@ -463,8 +463,8 @@ function LogisticsSection({ requestId, request, role }: { requestId: number, req
     if (!shippingPartnerName || !shippingDate || !shippingStatus) return;
     logisticsMutation.mutate({
       id: requestId,
-      shippingPartnerName,
-      docketDetails: docketDetails || undefined,
+      shippingPartner: shippingPartnerName,
+      docketNumber: docketDetails || undefined,
       shippingDate,
       shippingStatus,
     }, {
@@ -484,10 +484,10 @@ function LogisticsSection({ requestId, request, role }: { requestId: number, req
         <CardTitle className="flex items-center gap-2"><Truck className="h-4 w-4" /> Shipping / Logistics</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {request.shippingPartnerName ? (
+        {request.shippingPartner ? (
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-muted-foreground">Partner</span><span className="font-medium" data-testid="text-shipping-partner">{request.shippingPartnerName}</span></div>
-            {request.docketDetails && <div className="flex justify-between"><span className="text-muted-foreground">Docket</span><span className="font-medium" data-testid="text-docket-details">{request.docketDetails}</span></div>}
+            <div className="flex justify-between"><span className="text-muted-foreground">Partner</span><span className="font-medium" data-testid="text-shipping-partner">{request.shippingPartner}</span></div>
+            {request.docketNumber && <div className="flex justify-between"><span className="text-muted-foreground">Docket</span><span className="font-medium" data-testid="text-docket-details">{request.docketNumber}</span></div>}
             {request.shippingDate && <div className="flex justify-between"><span className="text-muted-foreground">Ship Date</span><span className="font-medium" data-testid="text-shipping-date">{format(new Date(request.shippingDate), 'MMM d, yyyy')}</span></div>}
             {request.shippingStatus && (
               <div className="flex justify-between items-center">
@@ -506,7 +506,7 @@ function LogisticsSection({ requestId, request, role }: { requestId: number, req
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" className="w-full" data-testid="button-update-logistics">
-                <Truck className="h-4 w-4 mr-2" /> {request.shippingPartnerName ? "Update Shipping" : "Add Shipping Details"}
+                <Truck className="h-4 w-4 mr-2" /> {request.shippingPartner ? "Update Shipping" : "Add Shipping Details"}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
@@ -574,7 +574,7 @@ function PartsConsumptionSection({ requestId, canEdit, parts, role }: { requestI
               <Select value={selectedPart} onValueChange={setSelectedPart}>
                 <SelectTrigger data-testid="select-part"><SelectValue placeholder="Search inventory..." /></SelectTrigger>
                 <SelectContent>
-                  {inventory?.map(item => (
+                  {inventory?.map((item: any) => (
                     <SelectItem key={item.id} value={item.id.toString()}>
                       {item.name} (Stock: {item.quantity})
                     </SelectItem>
@@ -612,7 +612,7 @@ function PartsConsumptionSection({ requestId, canEdit, parts, role }: { requestI
                   <td className="p-3">{part.item?.name || 'Unknown Item'}</td>
                   <td className="p-3 text-right">{part.quantity}</td>
                   {showPrice && <td className="p-3 text-right">{formatCurrency(Number(part.item?.price || 0))}</td>}
-                  {showPrice && <td className="p-3 text-right font-medium">{formatCurrency(Number(part.item?.price || 0) * part.quantity)}</td>}
+                  {showPrice && <td className="p-3 text-right font-medium">{formatCurrency(Number(part.item?.price || 0) * part.quantityUsed)}</td>}
                 </tr>
               )) : (
                 <tr><td colSpan={showPrice ? 4 : 2} className="p-4 text-center text-muted-foreground">No parts consumed yet</td></tr>
@@ -634,7 +634,7 @@ function ImageUploadButtons({ type, requestId }: { type: 'before' | 'after', req
   const handleCameraCapture = useCallback(async (file: File) => {
     const result = await uploadFile(file);
     if (result) {
-      uploadImageMutation.mutate({ id: requestId, imageUrl: result.objectPath, type });
+      uploadImageMutation.mutate({ id: requestId, fileUrl: result.objectPath, type });
     }
     setCameraOpen(false);
   }, [uploadFile, uploadImageMutation, requestId, type]);
@@ -645,7 +645,7 @@ function ImageUploadButtons({ type, requestId }: { type: 'before' | 'after', req
     for (let i = 0; i < files.length; i++) {
       const result = await uploadFile(files[i]);
       if (result) {
-        uploadImageMutation.mutate({ id: requestId, imageUrl: result.objectPath, type });
+        uploadImageMutation.mutate({ id: requestId, fileUrl: result.objectPath, type });
       }
     }
     e.target.value = '';
@@ -703,7 +703,7 @@ function ImagePreviewCard({ img, label }: { img: any, label: string }) {
           data-testid={`img-preview-${img.id}`}
         >
           <img
-            src={img.imageUrl}
+            src={img.fileUrl}
             className="h-40 w-full object-cover rounded-md"
             alt={label}
           />
@@ -718,7 +718,7 @@ function ImagePreviewCard({ img, label }: { img: any, label: string }) {
           asChild
           data-testid={`button-download-image-${img.id}`}
         >
-          <a href={img.imageUrl} target="_blank" rel="noopener noreferrer" download={`${label}-${img.id}.jpg`}>
+          <a href={img.fileUrl} target="_blank" rel="noopener noreferrer" download={`${label}-${img.id}.jpg`}>
             <Download className="h-3.5 w-3.5 mr-1" /> Download
           </a>
         </Button>
@@ -731,7 +731,7 @@ function ImagePreviewCard({ img, label }: { img: any, label: string }) {
           </DialogHeader>
           <div className="p-4 pt-2">
             <img
-              src={img.imageUrl}
+              src={img.fileUrl}
               className="w-full max-h-[70vh] object-contain rounded-md"
               alt={label}
               data-testid={`img-fullsize-${img.id}`}
@@ -739,7 +739,7 @@ function ImagePreviewCard({ img, label }: { img: any, label: string }) {
           </div>
           <div className="flex justify-end gap-2 p-4 pt-0">
             <Button variant="outline" size="sm" asChild data-testid={`button-download-fullsize-${img.id}`}>
-              <a href={img.imageUrl} target="_blank" rel="noopener noreferrer" download={`${label}-${img.id}.jpg`}>
+              <a href={img.fileUrl} target="_blank" rel="noopener noreferrer" download={`${label}-${img.id}.jpg`}>
                 <Download className="h-4 w-4 mr-1" /> Download
               </a>
             </Button>
@@ -980,21 +980,21 @@ const INDIAN_STATES = [
   "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry"
 ];
 
-function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { requestId: number; droneNo: string; baseLocation: string }) {
+function ExpensesSection({ requestId, droneNumber, baseLocation }: { requestId: number; droneNumber: string; baseLocation: string }) {
   const { data: expenses, isLoading } = useExpenses(requestId);
   const addExpenseMutation = useAddExpense();
   const updateExpenseMutation = useUpdateExpense();
   const deleteExpenseMutation = useDeleteExpense();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<EngineerExpense | null>(null);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [billStatus, setBillStatus] = useState(false);
-  const [billImageUrl, setBillImageUrl] = useState<string | null>(null);
+  const [billfileUrl, setBillfileUrl] = useState<string | null>(null);
   const [onlineSlip, setOnlineSlip] = useState(false);
-  const [onlineSlipImageUrl, setOnlineSlipImageUrl] = useState<string | null>(null);
+  const [onlineSlipfileUrl, setOnlineSlipfileUrl] = useState<string | null>(null);
   const [modeOfTravel, setModeOfTravel] = useState("");
   const [expBaseLocation, setExpBaseLocation] = useState(baseLocation || "");
   const [remark, setRemark] = useState("");
@@ -1009,8 +1009,8 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
     const result = await uploadFile(file);
     if (result) {
       const url = `/api/uploads/${result.objectPath}`;
-      if (target === 'bill') setBillImageUrl(url);
-      else setOnlineSlipImageUrl(url);
+      if (target === 'bill') setBillfileUrl(url);
+      else setOnlineSlipfileUrl(url);
     }
   };
 
@@ -1019,9 +1019,9 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
     setDescription("");
     setAmount("");
     setBillStatus(false);
-    setBillImageUrl(null);
+    setBillfileUrl(null);
     setOnlineSlip(false);
-    setOnlineSlipImageUrl(null);
+    setOnlineSlipfileUrl(null);
     setModeOfTravel("");
     setExpBaseLocation(baseLocation || "");
     setRemark("");
@@ -1033,24 +1033,24 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
     setDialogOpen(true);
   };
 
-  const openEditDialog = (exp: EngineerExpense) => {
+  const openEditDialog = (exp: Expense) => {
     setEditingExpense(exp);
     setDate(exp.date ? format(new Date(exp.date), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'));
     setDescription(exp.description);
     setAmount(String(exp.amount));
     setBillStatus(exp.billStatus);
-    setBillImageUrl(exp.billImageUrl || null);
+    setBillfileUrl(exp.billFile || null);
     setOnlineSlip(exp.onlineSlip);
-    setOnlineSlipImageUrl(exp.onlineSlipImageUrl || null);
-    setModeOfTravel(exp.modeOfTravel);
+    setOnlineSlipfileUrl(exp.slipFile || null);
+    setModeOfTravel(exp.travelMode);
     setExpBaseLocation(exp.baseLocation);
-    setRemark(exp.remark || "");
+    setRemark(exp.remarks || "");
     setDialogOpen(true);
   };
 
   const canSubmit = description && amount && modeOfTravel && expBaseLocation && date
-    && (!billStatus || billImageUrl)
-    && (!onlineSlip || onlineSlipImageUrl);
+    && (!billStatus || billfileUrl)
+    && (!onlineSlip || onlineSlipfileUrl);
 
   const isMutating = addExpenseMutation.isPending || updateExpenseMutation.isPending;
 
@@ -1061,9 +1061,9 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
       description,
       amount,
       billStatus,
-      billImageUrl: billStatus ? billImageUrl : null,
+      billfileUrl: billStatus ? billfileUrl : null,
       onlineSlip,
-      onlineSlipImageUrl: onlineSlip ? onlineSlipImageUrl : null,
+      onlineSlipfileUrl: onlineSlip ? onlineSlipfileUrl : null,
       modeOfTravel,
       baseLocation: expBaseLocation,
       remark: remark || null,
@@ -1087,7 +1087,7 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
     }
   };
 
-  const totalExpenses = (expenses || []).reduce((sum: number, e: EngineerExpense) => sum + Number(e.amount), 0);
+  const totalExpenses = (expenses || []).reduce((sum: number, e: Expense) => sum + Number(e.amount), 0);
 
   const expenseFormContent = (
     <div className="space-y-4 py-2">
@@ -1142,7 +1142,7 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
             checked={billStatus}
             onCheckedChange={(checked) => {
               setBillStatus(!!checked);
-              if (!checked) setBillImageUrl(null);
+              if (!checked) setBillfileUrl(null);
             }}
             data-testid="checkbox-bill-status"
           />
@@ -1169,10 +1169,10 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
                 <Camera className="h-3.5 w-3.5 mr-1" /> Camera
               </Button>
             </div>
-            {billImageUrl && (
+            {billfileUrl && (
               <div className="flex items-center gap-2 text-xs text-green-600">
                 <CheckCircle className="h-3.5 w-3.5" /> Bill image uploaded
-                <img src={billImageUrl} alt="bill" className="h-10 w-10 object-cover rounded border ml-2" />
+                <img src={billfileUrl} alt="bill" className="h-10 w-10 object-cover rounded border ml-2" />
               </div>
             )}
             <CameraCapture
@@ -1192,7 +1192,7 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
             checked={onlineSlip}
             onCheckedChange={(checked) => {
               setOnlineSlip(!!checked);
-              if (!checked) setOnlineSlipImageUrl(null);
+              if (!checked) setOnlineSlipfileUrl(null);
             }}
             data-testid="checkbox-online-slip"
           />
@@ -1222,10 +1222,10 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
                 <Camera className="h-3.5 w-3.5 mr-1" /> Camera
               </Button>
             </div>
-            {onlineSlipImageUrl && (
+            {onlineSlipfileUrl && (
               <div className="flex items-center gap-2 text-xs text-green-600">
                 <CheckCircle className="h-3.5 w-3.5" /> Online slip uploaded
-                <img src={onlineSlipImageUrl} alt="slip" className="h-10 w-10 object-cover rounded border ml-2" />
+                <img src={onlineSlipfileUrl} alt="slip" className="h-10 w-10 object-cover rounded border ml-2" />
               </div>
             )}
             <CameraCapture
@@ -1248,7 +1248,7 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
             <CardTitle className="flex items-center gap-2">
               <IndianRupee className="h-4 w-4" /> Engineer Expenses
             </CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">Drone No: <span className="font-mono font-medium text-foreground">{droneNo}</span></p>
+            <p className="text-sm text-muted-foreground mt-1">Drone No: <span className="font-mono font-medium text-foreground">{droneNumber}</span></p>
           </div>
           <Button size="sm" onClick={openAddDialog} data-testid="button-add-expense">
             <Plus className="h-4 w-4 mr-1" /> Add Expense
@@ -1303,7 +1303,7 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {expenses.map((exp: EngineerExpense, idx: number) => (
+                  {expenses.map((exp: Expense, idx: number) => (
                     <TableRow key={exp.id} data-testid={`row-expense-${exp.id}`}>
                       <TableCell className="font-mono text-xs">{idx + 1}</TableCell>
                       <TableCell className="text-sm whitespace-nowrap">{exp.date ? format(new Date(exp.date), 'dd/MM/yyyy') : '-'}</TableCell>
@@ -1313,8 +1313,8 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
                         {exp.billStatus ? (
                           <div className="flex items-center gap-1">
                             <Badge variant="default" className="text-[10px] no-default-hover-elevate no-default-active-elevate bg-green-600">YES</Badge>
-                            {exp.billImageUrl && (
-                              <a href={exp.billImageUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-[10px]" onClick={(e) => e.stopPropagation()}>View</a>
+                            {exp.billFile && (
+                              <a href={exp.billFile} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-[10px]" onClick={(e) => e.stopPropagation()}>View</a>
                             )}
                           </div>
                         ) : (
@@ -1325,8 +1325,8 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
                         {exp.onlineSlip ? (
                           <div className="flex items-center gap-1">
                             <Badge variant="default" className="text-[10px] no-default-hover-elevate no-default-active-elevate bg-blue-600">YES</Badge>
-                            {exp.onlineSlipImageUrl && (
-                              <a href={exp.onlineSlipImageUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-[10px]" onClick={(e) => e.stopPropagation()}>View</a>
+                            {exp.slipFile && (
+                              <a href={exp.slipFile} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-[10px]" onClick={(e) => e.stopPropagation()}>View</a>
                             )}
                           </div>
                         ) : (
@@ -1335,12 +1335,12 @@ function EngineerExpensesSection({ requestId, droneNo, baseLocation }: { request
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
-                          {exp.modeOfPayment}
+                          {exp.paymentMode}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm">{exp.modeOfTravel}</TableCell>
+                      <TableCell className="text-sm">{exp.travelMode}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">{exp.baseLocation}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate">{exp.remark || '-'}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate">{exp.remarks || '-'}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <Button

@@ -2,14 +2,23 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 import { type InsertInventory, type Inventory } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export function useInventory() {
   return useQuery({
     queryKey: [api.inventory.list.path],
     queryFn: async () => {
-      const res = await fetch(api.inventory.list.path, { credentials: "include" });
+      const res = await fetch(api.inventory.list.path, {
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error("Failed to fetch inventory");
-      return api.inventory.list.responses[200].parse(await res.json());
+      return res.json();
     },
   });
 }
@@ -20,14 +29,8 @@ export function useCreateInventoryItem() {
 
   return useMutation({
     mutationFn: async (data: InsertInventory) => {
-      const res = await fetch(api.inventory.create.path, {
-        method: api.inventory.create.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to create item");
-      return api.inventory.create.responses[201].parse(await res.json());
+      const res = await apiRequest("POST", api.inventory.create.path, data);
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
@@ -46,14 +49,8 @@ export function useUpdateInventoryItem() {
   return useMutation({
     mutationFn: async ({ id, ...data }: { id: number } & Partial<InsertInventory>) => {
       const url = buildUrl(api.inventory.update.path, { id });
-      const res = await fetch(url, {
-        method: api.inventory.update.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to update item");
-      return api.inventory.update.responses[200].parse(await res.json());
+      const res = await apiRequest("PUT", url, data);
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
@@ -72,11 +69,7 @@ export function useDeleteInventoryItem() {
   return useMutation({
     mutationFn: async (id: number) => {
       const url = buildUrl(api.inventory.delete.path, { id });
-      const res = await fetch(url, {
-        method: api.inventory.delete.method,
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to delete item");
+      await apiRequest("DELETE", url);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });

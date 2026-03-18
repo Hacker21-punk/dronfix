@@ -39,18 +39,18 @@ export default function ServiceRequestsPage() {
   const canCreate = profile?.role === 'admin';
   const isLogistics = profile?.role === 'logistics';
 
-  const searchFiltered = requests?.filter(req =>
+  const searchFiltered = requests?.filter((req: any) =>
     req.pilotName.toLowerCase().includes(search.toLowerCase()) ||
-    req.droneNo.toLowerCase().includes(search.toLowerCase()) ||
+    req.droneNumber.toLowerCase().includes(search.toLowerCase()) ||
     (req.state || "").toLowerCase().includes(search.toLowerCase()) ||
     (req.district || "").toLowerCase().includes(search.toLowerCase()) ||
     (req.pincode || "").includes(search) ||
-    (req.shippingPartnerName || "").toLowerCase().includes(search.toLowerCase()) ||
-    (req.docketDetails || "").toLowerCase().includes(search.toLowerCase())
+    (req.logistics?.shippingPartner || "").toLowerCase().includes(search.toLowerCase()) ||
+    (req.logistics?.docketNumber || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const openRequests = searchFiltered?.filter(req => OPEN_STATUSES.includes(req.status)) || [];
-  const closedRequests = searchFiltered?.filter(req => CLOSED_STATUSES.includes(req.status)) || [];
+  const openRequests = searchFiltered?.filter((req: any) => OPEN_STATUSES.includes(req.status)) || [];
+  const closedRequests = searchFiltered?.filter((req: any) => CLOSED_STATUSES.includes(req.status)) || [];
 
   const baseList = activeTab === "open" ? openRequests : closedRequests;
 
@@ -300,7 +300,7 @@ export default function ServiceRequestsPage() {
                           <span className="font-medium" data-testid={`text-pilot-${req.id}`}>{req.pilotName}</span>
                         </TableCell>
                         <TableCell>
-                          <span className="text-sm font-mono" data-testid={`text-drone-${req.id}`}>{req.droneNo}</span>
+                          <span className="text-sm font-mono" data-testid={`text-drone-${req.id}`}>{req.droneNumber}</span>
                         </TableCell>
                         <TableCell>
                           <span className="text-sm text-muted-foreground" data-testid={`text-location-${req.id}`}>
@@ -319,16 +319,16 @@ export default function ServiceRequestsPage() {
                         </TableCell>
                         {isLogistics && (
                           <TableCell>
-                            {req.shippingStatus ? (
+                            {req.logistics?.shippingStatus ? (
                               <Badge 
-                                variant={req.shippingStatus === 'delivered' ? 'default' : 'secondary'} 
+                                variant={req.logistics.shippingStatus === 'delivered' ? 'default' : 'secondary'} 
                                 className={`text-xs uppercase tracking-wider no-default-hover-elevate no-default-active-elevate ${
-                                  req.shippingStatus === 'delivered' ? 'bg-green-600 hover:bg-green-700' : 
-                                  req.shippingStatus === 'in_transit' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''
+                                  req.logistics.shippingStatus === 'delivered' ? 'bg-green-600 hover:bg-green-700' : 
+                                  req.logistics.shippingStatus === 'in_transit' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''
                                 }`}
                                 data-testid={`text-shipping-status-${req.id}`}
                               >
-                                {req.shippingStatus.replace('_', ' ')}
+                                {req.logistics.shippingStatus.replace('_', ' ')}
                               </Badge>
                             ) : (
                               <span className="text-xs text-muted-foreground">Not shipped</span>
@@ -338,11 +338,11 @@ export default function ServiceRequestsPage() {
                         {isLogistics && (
                           <TableCell>
                             <div className="text-sm" data-testid={`text-courier-${req.id}`}>
-                              {req.shippingPartnerName ? (
+                              {req.logistics?.shippingPartner ? (
                                 <div>
-                                  <span className="font-medium">{req.shippingPartnerName}</span>
-                                  {req.docketDetails && (
-                                    <span className="block text-xs text-muted-foreground">{req.docketDetails}</span>
+                                  <span className="font-medium">{req.logistics.shippingPartner}</span>
+                                  {req.logistics.docketNumber && (
+                                    <span className="block text-xs text-muted-foreground">{req.logistics.docketNumber}</span>
                                   )}
                                 </div>
                               ) : (
@@ -387,7 +387,7 @@ export default function ServiceRequestsPage() {
 function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { mutate, isPending } = useCreateServiceRequest();
   const { data: users } = useUsers();
-  const engineers = users?.filter(u => u.role === 'engineer') || [];
+  const engineers = users?.filter((u: any) => u.role === 'engineer') || [];
   const [pincodeStatus, setPincodeStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [pincodeMsg, setPincodeMsg] = useState("");
 
@@ -395,9 +395,9 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     resolver: zodResolver(insertServiceRequestSchema),
     defaultValues: {
       pilotName: "",
-      droneNo: "",
-      droneSerial: "",
-      pilotAddress: "",
+      droneNumber: "",
+      serialNumber: "",
+      address: "",
       pincode: "",
       state: "",
       district: "",
@@ -405,7 +405,7 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       complaint: "",
       partsRequested: "",
       serviceType: "L1" as const,
-      assignedToId: "",
+      assignedEngineerId: "",
     }
   });
 
@@ -449,8 +449,8 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
   const onSubmit = (data: any) => {
     const submitData = { ...data };
-    if (!submitData.assignedToId) {
-      delete submitData.assignedToId;
+    if (!submitData.assignedEngineerId) {
+      delete submitData.assignedEngineerId;
     }
     mutate(submitData, {
       onSuccess: () => {
@@ -484,7 +484,7 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
           <div className="space-y-2">
             <Label>Address</Label>
-            <Input {...form.register("pilotAddress")} data-testid="input-address" />
+            <Input {...form.register("address")} data-testid="input-address" />
           </div>
 
           <div className="grid grid-cols-3 gap-4">
@@ -523,12 +523,12 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>Drone No.</Label>
-              <Input {...form.register("droneNo")} data-testid="input-drone-no" />
-              {form.formState.errors.droneNo && <p className="text-xs text-destructive">{form.formState.errors.droneNo.message}</p>}
+              <Input {...form.register("droneNumber")} data-testid="input-drone-no" />
+              {(form.formState.errors as any).droneNumber && <p className="text-xs text-destructive">{(form.formState.errors as any).droneNumber.message}</p>}
             </div>
             <div className="space-y-2">
               <Label>Serial No.</Label>
-              <Input {...form.register("droneSerial")} data-testid="input-drone-serial" />
+              <Input {...form.register("serialNumber")} data-testid="input-drone-serial" />
             </div>
             <div className="space-y-2">
               <Label>Type</Label>
@@ -558,12 +558,12 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
           <div className="space-y-2">
             <Label>Assign Engineer</Label>
-            <Select onValueChange={(val) => form.setValue("assignedToId", val)} defaultValue="">
+            <Select onValueChange={(val) => form.setValue("assignedEngineerId", val)} defaultValue="">
               <SelectTrigger data-testid="select-assign-engineer">
                 <SelectValue placeholder="Select engineer to assign" />
               </SelectTrigger>
               <SelectContent>
-                {engineers.map(eng => (
+                {engineers.map((eng: any) => (
                   <SelectItem key={eng.userId} value={eng.userId!}>{eng.name}</SelectItem>
                 ))}
               </SelectContent>

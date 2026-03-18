@@ -1,15 +1,23 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
-import { type InsertServiceRequest, type ServiceRequest, type UpdateServiceRequest } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export function useServiceRequests() {
   return useQuery({
     queryKey: [api.serviceRequests.list.path],
     queryFn: async () => {
-      const res = await fetch(api.serviceRequests.list.path, { credentials: "include" });
+      const res = await fetch(api.serviceRequests.list.path, {
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error("Failed to fetch service requests");
-      return api.serviceRequests.list.responses[200].parse(await res.json());
+      return res.json();
     },
   });
 }
@@ -19,9 +27,12 @@ export function useServiceRequest(id: number) {
     queryKey: [api.serviceRequests.get.path, id],
     queryFn: async () => {
       const url = buildUrl(api.serviceRequests.get.path, { id });
-      const res = await fetch(url, { credentials: "include" });
+      const res = await fetch(url, {
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error("Failed to fetch service request details");
-      return api.serviceRequests.get.responses[200].parse(await res.json());
+      return res.json();
     },
     enabled: !!id,
   });
@@ -32,15 +43,9 @@ export function useCreateServiceRequest() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (data: InsertServiceRequest) => {
-      const res = await fetch(api.serviceRequests.create.path, {
-        method: api.serviceRequests.create.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to create request");
-      return api.serviceRequests.create.responses[201].parse(await res.json());
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", api.serviceRequests.create.path, data);
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.serviceRequests.list.path] });
@@ -57,16 +62,10 @@ export function useUpdateServiceRequest() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: number } & UpdateServiceRequest) => {
+    mutationFn: async ({ id, ...data }: { id: number; [key: string]: any }) => {
       const url = buildUrl(api.serviceRequests.update.path, { id });
-      const res = await fetch(url, {
-        method: api.serviceRequests.update.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to update request");
-      return api.serviceRequests.update.responses[200].parse(await res.json());
+      const res = await apiRequest("PUT", url, data);
+      return res.json();
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [api.serviceRequests.list.path] });
@@ -86,14 +85,8 @@ export function useAssignEngineer() {
   return useMutation({
     mutationFn: async ({ id, engineerId }: { id: number; engineerId: string }) => {
       const url = buildUrl(api.serviceRequests.assign.path, { id });
-      const res = await fetch(url, {
-        method: api.serviceRequests.assign.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ engineerId }),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to assign engineer");
-      return api.serviceRequests.assign.responses[200].parse(await res.json());
+      const res = await apiRequest("PATCH", url, { engineerId });
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.serviceRequests.list.path] });
@@ -107,20 +100,31 @@ export function useUploadServiceImage() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, imageUrl, type }: { id: number; imageUrl: string; type: 'before' | 'after' }) => {
-      const url = buildUrl(api.serviceImages.upload.path, { id });
-      const res = await fetch(url, {
-        method: api.serviceImages.upload.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl, type }),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to upload image info");
-      return api.serviceImages.upload.responses[201].parse(await res.json());
+    mutationFn: async ({ id, fileUrl, type }: { id: number; fileUrl: string; type: 'before' | 'after' }) => {
+      const url = buildUrl(api.images.upload.path, { id });
+      const res = await apiRequest("POST", url, { fileUrl, type });
+      return res.json();
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [api.serviceRequests.get.path, variables.id] });
       toast({ title: "Success", description: "Image uploaded" });
+    },
+  });
+}
+
+export function useUploadDocument() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, type, fileUrl }: { id: number; type: string; fileUrl: string }) => {
+      const url = buildUrl(api.documents.upload.path, { id });
+      const res = await apiRequest("POST", url, { type, fileUrl });
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.serviceRequests.get.path, variables.id] });
+      toast({ title: "Success", description: "Document uploaded" });
     },
   });
 }
@@ -132,26 +136,17 @@ export function useConsumePart() {
   return useMutation({
     mutationFn: async ({ id, inventoryId, quantity }: { id: number; inventoryId: number; quantity: number }) => {
       const url = buildUrl(api.partsConsumed.add.path, { id });
-      const res = await fetch(url, {
-        method: api.partsConsumed.add.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ inventoryId, quantity }),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "Failed to add part");
-      }
-      return api.partsConsumed.add.responses[201].parse(await res.json());
+      const res = await apiRequest("POST", url, { inventoryId, quantity });
+      return res.json();
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [api.serviceRequests.get.path, variables.id] });
-      queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] }); // Inventory changed
+      queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
       toast({ title: "Success", description: "Part consumed" });
     },
     onError: (err) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
-    }
+    },
   });
 }
 
@@ -160,17 +155,8 @@ export function useSubmitInvoice() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: number; invoiceNumber: string; challanNumber?: string; invoiceValue: string; reimbursementAmount?: string; invoiceType: string; invoiceDate: string }) => {
-      const res = await fetch(`/api/service-requests/${id}/invoice`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "Failed to submit invoice");
-      }
+    mutationFn: async ({ id, ...data }: { id: number; invoiceNumber: string; challanNumber?: string; invoiceValue: string; reimbursementAmount?: string; invoiceType?: string; invoiceDate?: string }) => {
+      const res = await apiRequest("POST", `/api/service-requests/${id}/invoice`, data);
       return res.json();
     },
     onSuccess: (_, variables) => {
@@ -178,7 +164,7 @@ export function useSubmitInvoice() {
       queryClient.invalidateQueries({ queryKey: [api.serviceRequests.list.path] });
       queryClient.invalidateQueries({ queryKey: ["/api/billed-requests"] });
       queryClient.invalidateQueries({ queryKey: [api.reports.dashboard.path] });
-      toast({ title: "Success", description: "Invoice generated successfully" });
+      toast({ title: "Success", description: "Invoice generated" });
     },
     onError: (err) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -191,17 +177,8 @@ export function useSubmitLogistics() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: number; shippingPartnerName: string; docketDetails?: string; shippingDate: string; shippingStatus: string }) => {
-      const res = await fetch(`/api/service-requests/${id}/logistics`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "Failed to update logistics");
-      }
+    mutationFn: async ({ id, ...data }: { id: number; shippingPartner: string; docketNumber?: string; shippingDate?: string; shippingStatus?: string }) => {
+      const res = await apiRequest("PATCH", `/api/service-requests/${id}/logistics`, data);
       return res.json();
     },
     onSuccess: (_, variables) => {
@@ -219,7 +196,10 @@ export function useExpenses(serviceRequestId: number) {
   return useQuery({
     queryKey: ['/api/service-requests', serviceRequestId, 'expenses'],
     queryFn: async () => {
-      const res = await fetch(`/api/service-requests/${serviceRequestId}/expenses`, { credentials: "include" });
+      const res = await fetch(`/api/service-requests/${serviceRequestId}/expenses`, {
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error("Failed to fetch expenses");
       return res.json();
     },
@@ -232,17 +212,8 @@ export function useAddExpense() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: number; date: string; description: string; amount: string; billStatus: boolean; billImageUrl?: string | null; onlineSlip: boolean; onlineSlipImageUrl?: string | null; modeOfTravel: string; baseLocation: string; remark?: string | null }) => {
-      const res = await fetch(`/api/service-requests/${id}/expenses`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "Failed to add expense");
-      }
+    mutationFn: async ({ id, ...data }: { id: number; [key: string]: any }) => {
+      const res = await apiRequest("POST", `/api/service-requests/${id}/expenses`, data);
       return res.json();
     },
     onSuccess: (_, variables) => {
@@ -260,17 +231,8 @@ export function useUpdateExpense() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ requestId, expenseId, ...data }: { requestId: number; expenseId: number; date: string; description: string; amount: string; billStatus: boolean; billImageUrl?: string | null; onlineSlip: boolean; onlineSlipImageUrl?: string | null; modeOfTravel: string; baseLocation: string; remark?: string | null }) => {
-      const res = await fetch(`/api/service-requests/${requestId}/expenses/${expenseId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "Failed to update expense");
-      }
+    mutationFn: async ({ requestId, expenseId, ...data }: { requestId: number; expenseId: number; [key: string]: any }) => {
+      const res = await apiRequest("PUT", `/api/service-requests/${requestId}/expenses/${expenseId}`, data);
       return res.json();
     },
     onSuccess: (_, variables) => {
@@ -292,6 +254,7 @@ export function useDeleteExpense() {
       const res = await fetch(`/api/service-requests/${requestId}/expenses/${expenseId}`, {
         method: "DELETE",
         credentials: "include",
+        headers: getAuthHeaders(),
       });
       if (!res.ok) throw new Error("Failed to delete expense");
       return res.json();
@@ -300,9 +263,6 @@ export function useDeleteExpense() {
       queryClient.invalidateQueries({ queryKey: ['/api/service-requests', variables.requestId, 'expenses'] });
       toast({ title: "Success", description: "Expense removed" });
     },
-    onError: (err) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    },
   });
 }
 
@@ -310,9 +270,12 @@ export function useDashboardStats() {
   return useQuery({
     queryKey: [api.reports.dashboard.path],
     queryFn: async () => {
-      const res = await fetch(api.reports.dashboard.path, { credentials: "include" });
+      const res = await fetch(api.reports.dashboard.path, {
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error("Failed to fetch dashboard stats");
-      return api.reports.dashboard.responses[200].parse(await res.json());
+      return res.json();
     },
   });
 }
