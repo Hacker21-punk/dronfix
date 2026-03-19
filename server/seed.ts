@@ -30,7 +30,7 @@ export async function seedAdmin() {
     if (err.code === "23505") {
       console.log("[seed] Admin already exists.");
     } else {
-      console.error("[seed] Error:", err.message);
+      console.error("[seed] Error:", err);
     }
   }
 }
