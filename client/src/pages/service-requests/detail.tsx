@@ -321,7 +321,7 @@ function AssignEngineerDialog({ requestId, currentEngineerId }: { requestId: num
             <SelectTrigger><SelectValue placeholder="Select engineer" /></SelectTrigger>
             <SelectContent>
               {engineers.map((eng: any) => (
-                <SelectItem key={eng.userId} value={eng.userId!}>{eng.name}</SelectItem>
+                <SelectItem key={eng.id} value={String(eng.id)}>{eng.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>

@@ -564,7 +564,7 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
               </SelectTrigger>
               <SelectContent>
                 {engineers.map((eng: any) => (
-                  <SelectItem key={eng.userId} value={eng.userId!}>{eng.name}</SelectItem>
+                  <SelectItem key={eng.id} value={String(eng.id)}>{eng.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

@@ -239,7 +239,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateServiceRequest(id: number, data: UpdateServiceRequest) {
     const updateData: any = { ...data };
-    if (data.status === "closed" && !(data as any).closedAt) {
+    if (data.status === "completed" && !(data as any).closedAt) {
       updateData.closedAt = new Date();
     }
     if (data.tentativeServiceDate && typeof data.tentativeServiceDate === "string") {
@@ -371,7 +371,7 @@ export class DatabaseStorage implements IStorage {
     }).returning();
 
     // Mark service request as closed/billed
-    await db.update(serviceRequests).set({ status: "closed", closedAt: new Date() })
+    await db.update(serviceRequests).set({ status: "billed", closedAt: new Date() })
       .where(eq(serviceRequests.id, serviceRequestId));
 
     return invoice;
@@ -426,8 +426,8 @@ export class DatabaseStorage implements IStorage {
       allRequests = await requestsQuery;
     }
 
-    const openRequests = allRequests.filter(r => r.status === "open");
-    const closedRequests = allRequests.filter(r => r.status === "closed");
+    const openRequests = allRequests.filter(r => ["pending", "accepted", "in_progress"].includes(r.status));
+    const closedRequests = allRequests.filter(r => ["completed", "billed"].includes(r.status));
 
     const avgAging = (type: string) => {
       const filtered = openRequests.filter(r => r.serviceType === type && r.createdAt);
@@ -453,7 +453,7 @@ export class DatabaseStorage implements IStorage {
   // ── Billing ────────────────────────────────────────────────────────────────
   async getBilledRequests() {
     const closedRequests = await db.select().from(serviceRequests)
-      .where(eq(serviceRequests.status, "closed"))
+      .where(eq(serviceRequests.status, "billed"))
       .orderBy(desc(serviceRequests.closedAt));
 
     if (closedRequests.length === 0) return [];
