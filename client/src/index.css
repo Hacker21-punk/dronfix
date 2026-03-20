@@ -13,6 +13,14 @@
   --background: 210 40% 98%;
   --foreground: 220 15% 20%;
 
+  /* Card */
+  --card: 0 0% 100%;
+  --card-foreground: 220 15% 20%;
+
+  /* Popover - solid white for dropdowns */
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 15% 20%;
+
   /* Primary - Hanron Teal */
   --primary: 174 58% 44%;
   --primary-foreground: 0 0% 100%;
@@ -44,6 +52,13 @@
 .dark {
   --background: 220 20% 10%;
   --foreground: 210 30% 92%;
+
+  --card: 220 18% 13%;
+  --card-foreground: 210 30% 92%;
+
+  --popover: 220 18% 13%;
+  --popover-foreground: 210 30% 92%;
+
   --primary: 174 58% 44%;
   --primary-foreground: 0 0% 100%;
   --secondary: 220 15% 18%;

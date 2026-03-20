@@ -341,9 +341,17 @@ export class DatabaseStorage implements IStorage {
       onlineSlip: data.onlineSlip,
       slipFile: data.slipFile || null,
       paymentMode: data.onlineSlip ? "Online" : "Cash",
-      travelMode: data.travelMode as any,
+      travelMode: data.travelMode || null,
       baseLocation: data.baseLocation,
       remarks: data.remarks || null,
+      expenseCategory: data.expenseCategory || null,
+      expenseSubcategory: data.expenseSubcategory || null,
+      meterStartReading: data.meterStartReading || null,
+      meterStopReading: data.meterStopReading || null,
+      meterStartImage: data.meterStartImage || null,
+      meterStopImage: data.meterStopImage || null,
+      approvalStatus: data.approvalStatus || false,
+      approvalFile: data.approvalFile || null,
     }).returning();
     return expense;
   }
@@ -358,9 +366,17 @@ export class DatabaseStorage implements IStorage {
       onlineSlip: data.onlineSlip,
       slipFile: data.slipFile || null,
       paymentMode: data.onlineSlip ? "Online" : "Cash",
-      travelMode: data.travelMode as any,
+      travelMode: data.travelMode || null,
       baseLocation: data.baseLocation,
       remarks: data.remarks || null,
+      expenseCategory: data.expenseCategory || null,
+      expenseSubcategory: data.expenseSubcategory || null,
+      meterStartReading: data.meterStartReading || null,
+      meterStopReading: data.meterStopReading || null,
+      meterStartImage: data.meterStartImage || null,
+      meterStopImage: data.meterStopImage || null,
+      approvalStatus: data.approvalStatus || false,
+      approvalFile: data.approvalFile || null,
     }).where(eq(expenses.id, expenseId)).returning();
     return expense;
   }

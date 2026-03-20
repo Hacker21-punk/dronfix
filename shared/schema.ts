@@ -93,9 +93,20 @@ export const expenses = pgTable("expenses", {
   onlineSlip: boolean("online_slip").notNull().default(false),
   slipFile: text("slip_file"),
   paymentMode: text("payment_mode").notNull().default("Cash"),
-  travelMode: modeOfTravelEnum("travel_mode").notNull(),
+  travelMode: text("travel_mode"),
   baseLocation: text("base_location").notNull(),
   remarks: text("remarks"),
+  // New categorization fields
+  expenseCategory: text("expense_category"),        // Travel | Food | Stay | Others
+  expenseSubcategory: text("expense_subcategory"),    // Train, Bus, Auto, etc.
+  // Meter reading fields (for Personal Bike/Car)
+  meterStartReading: decimal("meter_start_reading", { precision: 10, scale: 1 }),
+  meterStopReading: decimal("meter_stop_reading", { precision: 10, scale: 1 }),
+  meterStartImage: text("meter_start_image"),
+  meterStopImage: text("meter_stop_image"),
+  // Approval fields
+  approvalStatus: boolean("approval_status").notNull().default(false),
+  approvalFile: text("approval_file"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

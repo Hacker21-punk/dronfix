@@ -980,6 +980,15 @@ const INDIAN_STATES = [
   "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry"
 ];
 
+const EXPENSE_CATEGORIES = {
+  Travel: ["Train", "Bus", "Auto", "Cab", "Personal Bike/Car", "Bike Rental"],
+  Food: ["Breakfast", "Brunch", "Lunch", "Dinner"],
+  Stay: ["Hotel", "Lodge"],
+  Others: [],
+} as const;
+
+type ExpenseCategory = keyof typeof EXPENSE_CATEGORIES;
+
 function ExpensesSection({ requestId, droneNumber, baseLocation }: { requestId: number; droneNumber: string; baseLocation: string }) {
   const { data: expenses, isLoading } = useExpenses(requestId);
   const addExpenseMutation = useAddExpense();
@@ -988,29 +997,47 @@ function ExpensesSection({ requestId, droneNumber, baseLocation }: { requestId: 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
+  // Core fields
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
+  const [expBaseLocation, setExpBaseLocation] = useState(baseLocation || "");
+  const [remark, setRemark] = useState("");
+
+  // Type of Expense (category / subcategory)
+  const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory | "">("");
+  const [expenseSubcategory, setExpenseSubcategory] = useState("");
+  const [othersText, setOthersText] = useState("");
+
+  // Meter reading fields (for Personal Bike/Car)
+  const [meterStart, setMeterStart] = useState("");
+  const [meterStop, setMeterStop] = useState("");
+  const [meterStartImage, setMeterStartImage] = useState<string | null>(null);
+  const [meterStopImage, setMeterStopImage] = useState<string | null>(null);
+
+  // Approval
+  const [approvalChecked, setApprovalChecked] = useState(false);
+  const [approvalFile, setApprovalFile] = useState<string | null>(null);
+
+  // Bill / Slip
   const [billStatus, setBillStatus] = useState(false);
   const [billfileUrl, setBillfileUrl] = useState<string | null>(null);
   const [onlineSlip, setOnlineSlip] = useState(false);
   const [onlineSlipfileUrl, setOnlineSlipfileUrl] = useState<string | null>(null);
-  const [modeOfTravel, setModeOfTravel] = useState("");
-  const [expBaseLocation, setExpBaseLocation] = useState(baseLocation || "");
-  const [remark, setRemark] = useState("");
-  const [billCameraOpen, setBillCameraOpen] = useState(false);
-  const [slipCameraOpen, setSlipCameraOpen] = useState(false);
 
   const { uploadFile, isUploading } = useUpload();
   const billInputRef = useRef<HTMLInputElement>(null);
   const slipInputRef = useRef<HTMLInputElement>(null);
+  const approvalInputRef = useRef<HTMLInputElement>(null);
+  const meterStartInputRef = useRef<HTMLInputElement>(null);
+  const meterStopInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = async (file: File, target: 'bill' | 'slip') => {
+  const isPersonalVehicle = expenseCategory === "Travel" && expenseSubcategory === "Personal Bike/Car";
+
+  const handleGenericUpload = async (file: File, setter: (url: string | null) => void) => {
     const result = await uploadFile(file);
     if (result) {
-      const url = `/api/uploads/${result.objectPath}`;
-      if (target === 'bill') setBillfileUrl(url);
-      else setOnlineSlipfileUrl(url);
+      setter(`/api/uploads/${result.objectPath}`);
     }
   };
 
@@ -1022,10 +1049,18 @@ function ExpensesSection({ requestId, droneNumber, baseLocation }: { requestId: 
     setBillfileUrl(null);
     setOnlineSlip(false);
     setOnlineSlipfileUrl(null);
-    setModeOfTravel("");
     setExpBaseLocation(baseLocation || "");
     setRemark("");
     setEditingExpense(null);
+    setExpenseCategory("");
+    setExpenseSubcategory("");
+    setOthersText("");
+    setMeterStart("");
+    setMeterStop("");
+    setMeterStartImage(null);
+    setMeterStopImage(null);
+    setApprovalChecked(false);
+    setApprovalFile(null);
   };
 
   const openAddDialog = () => {
@@ -1042,31 +1077,67 @@ function ExpensesSection({ requestId, droneNumber, baseLocation }: { requestId: 
     setBillfileUrl(exp.billFile || null);
     setOnlineSlip(exp.onlineSlip);
     setOnlineSlipfileUrl(exp.slipFile || null);
-    setModeOfTravel(exp.travelMode);
     setExpBaseLocation(exp.baseLocation);
     setRemark(exp.remarks || "");
+    // New fields
+    const cat = ((exp as any).expenseCategory || "") as ExpenseCategory | "";
+    setExpenseCategory(cat);
+    const sub = (exp as any).expenseSubcategory || "";
+    if (cat === "Others") {
+      setOthersText(sub);
+      setExpenseSubcategory("");
+    } else {
+      setExpenseSubcategory(sub);
+      setOthersText("");
+    }
+    setMeterStart((exp as any).meterStartReading || "");
+    setMeterStop((exp as any).meterStopReading || "");
+    setMeterStartImage((exp as any).meterStartImage || null);
+    setMeterStopImage((exp as any).meterStopImage || null);
+    setApprovalChecked((exp as any).approvalStatus || false);
+    setApprovalFile((exp as any).approvalFile || null);
     setDialogOpen(true);
   };
 
-  const canSubmit = description && amount && modeOfTravel && expBaseLocation && date
+  // Derive the effective subcategory
+  const effectiveSubcategory = expenseCategory === "Others" ? othersText : expenseSubcategory;
+
+  // Validation
+  const meterValid = !isPersonalVehicle || (
+    meterStart && meterStop && Number(meterStop) > Number(meterStart) && meterStartImage && meterStopImage
+  );
+  const approvalValid = !approvalChecked || approvalFile;
+  const categoryValid = expenseCategory && (expenseCategory === "Others" ? othersText.trim() : expenseSubcategory);
+
+  const canSubmit = description && amount && Number(amount) > 0 && categoryValid && expBaseLocation && date
     && (!billStatus || billfileUrl)
-    && (!onlineSlip || onlineSlipfileUrl);
+    && (!onlineSlip || onlineSlipfileUrl)
+    && meterValid
+    && approvalValid;
 
   const isMutating = addExpenseMutation.isPending || updateExpenseMutation.isPending;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    const payload = {
+    const payload: any = {
       date,
       description,
       amount,
       billStatus,
-      billfileUrl: billStatus ? billfileUrl : null,
+      billFile: billStatus ? billfileUrl : null,
       onlineSlip,
-      onlineSlipfileUrl: onlineSlip ? onlineSlipfileUrl : null,
-      modeOfTravel,
+      slipFile: onlineSlip ? onlineSlipfileUrl : null,
+      travelMode: expenseCategory === "Travel" ? effectiveSubcategory : null,
       baseLocation: expBaseLocation,
-      remark: remark || null,
+      remarks: remark || null,
+      expenseCategory,
+      expenseSubcategory: effectiveSubcategory,
+      meterStartReading: isPersonalVehicle ? meterStart : null,
+      meterStopReading: isPersonalVehicle ? meterStop : null,
+      meterStartImage: isPersonalVehicle ? meterStartImage : null,
+      meterStopImage: isPersonalVehicle ? meterStopImage : null,
+      approvalStatus: approvalChecked,
+      approvalFile: approvalChecked ? approvalFile : null,
     };
 
     if (editingExpense) {
@@ -1089,34 +1160,126 @@ function ExpensesSection({ requestId, droneNumber, baseLocation }: { requestId: 
 
   const totalExpenses = (expenses || []).reduce((sum: number, e: Expense) => sum + Number(e.amount), 0);
 
+  // Helper to render a file upload row
+  const FileUploadField = ({ label, value, onUpload, inputRef, accept = "image/*,.pdf" }: {
+    label: string; value: string | null; onUpload: (url: string | null) => void;
+    inputRef: React.RefObject<HTMLInputElement | null>; accept?: string;
+  }) => (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">{label} *</p>
+      <div className="flex gap-2">
+        <input ref={inputRef} type="file" accept={accept} className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleGenericUpload(f, onUpload); e.target.value = ''; }} />
+        <Button type="button" variant="outline" size="sm" onClick={() => inputRef.current?.click()} disabled={isUploading}>
+          <Upload className="h-3.5 w-3.5 mr-1" /> {isUploading ? 'Uploading...' : 'Browse'}
+        </Button>
+      </div>
+      {value && (
+        <div className="flex items-center gap-2 text-xs text-green-600">
+          <CheckCircle className="h-3.5 w-3.5" /> File uploaded
+          {!value.endsWith('.pdf') && <img src={value} alt="preview" className="h-10 w-10 object-cover rounded border ml-2" />}
+          {value.endsWith('.pdf') && <span className="ml-2 text-muted-foreground">(PDF)</span>}
+        </div>
+      )}
+    </div>
+  );
+
   const expenseFormContent = (
     <div className="space-y-4 py-2">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Date *</Label>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="input-expense-date" />
-        </div>
-        <div>
-          <Label>Amount (₹) *</Label>
-          <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" data-testid="input-expense-amount" />
-        </div>
+      {/* 1. Date */}
+      <div>
+        <Label>Date *</Label>
+        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="input-expense-date" />
       </div>
+
+      {/* 2. Type of Expense — Category */}
+      <div>
+        <Label>Type of Expense *</Label>
+        <Select value={expenseCategory} onValueChange={(v) => {
+          setExpenseCategory(v as ExpenseCategory);
+          setExpenseSubcategory("");
+          setOthersText("");
+          if (v !== "Travel" || expenseSubcategory !== "Personal Bike/Car") {
+            setMeterStart(""); setMeterStop(""); setMeterStartImage(null); setMeterStopImage(null);
+          }
+        }}>
+          <SelectTrigger data-testid="select-expense-category"><SelectValue placeholder="Select category" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Travel">Travel</SelectItem>
+            <SelectItem value="Food">Food</SelectItem>
+            <SelectItem value="Stay">Stay</SelectItem>
+            <SelectItem value="Others">Others</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* 2b. Subcategory — dynamic */}
+      {expenseCategory && expenseCategory !== "Others" && (
+        <div>
+          <Label>Sub Type *</Label>
+          <Select value={expenseSubcategory} onValueChange={(v) => {
+            setExpenseSubcategory(v);
+            if (v !== "Personal Bike/Car") {
+              setMeterStart(""); setMeterStop(""); setMeterStartImage(null); setMeterStopImage(null);
+            }
+          }}>
+            <SelectTrigger data-testid="select-expense-subcategory"><SelectValue placeholder="Select type" /></SelectTrigger>
+            <SelectContent>
+              {EXPENSE_CATEGORIES[expenseCategory as ExpenseCategory].map((sub) => (
+                <SelectItem key={sub} value={sub}>{sub}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* 2c. Others — free text */}
+      {expenseCategory === "Others" && (
+        <div>
+          <Label>Specify Type *</Label>
+          <Input value={othersText} onChange={(e) => setOthersText(e.target.value)} placeholder="Enter expense type..." data-testid="input-expense-others" />
+        </div>
+      )}
+
+      {/* Personal Bike/Car — Meter Readings */}
+      {isPersonalVehicle && (
+        <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
+          <p className="text-sm font-medium flex items-center gap-2">🚗 Meter Reading Details</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Start Reading *</Label>
+              <Input type="number" value={meterStart} onChange={(e) => setMeterStart(e.target.value)} placeholder="0" data-testid="input-meter-start" />
+            </div>
+            <div>
+              <Label>Stop Reading *</Label>
+              <Input type="number" value={meterStop} onChange={(e) => setMeterStop(e.target.value)} placeholder="0" data-testid="input-meter-stop" />
+            </div>
+          </div>
+          {meterStart && meterStop && Number(meterStop) <= Number(meterStart) && (
+            <p className="text-xs text-destructive">⚠ Stop reading must be greater than start reading</p>
+          )}
+          {meterStart && meterStop && Number(meterStop) > Number(meterStart) && (
+            <p className="text-xs text-green-600">Distance: {(Number(meterStop) - Number(meterStart)).toFixed(1)} km</p>
+          )}
+          <FileUploadField label="Upload Start Meter Image" value={meterStartImage} onUpload={setMeterStartImage} inputRef={meterStartInputRef} accept="image/*" />
+          <FileUploadField label="Upload Stop Meter Image" value={meterStopImage} onUpload={setMeterStopImage} inputRef={meterStopInputRef} accept="image/*" />
+        </div>
+      )}
+
+      {/* 3. Description */}
       <div>
         <Label>Description *</Label>
         <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Travel to site, food, stay etc." data-testid="input-expense-description" />
       </div>
+
+      {/* 4. Amount */}
       <div>
-        <Label>Mode of Travel *</Label>
-        <Select value={modeOfTravel} onValueChange={setModeOfTravel}>
-          <SelectTrigger data-testid="select-expense-travel"><SelectValue placeholder="Select mode" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="Train">Train</SelectItem>
-            <SelectItem value="Bus">Bus</SelectItem>
-            <SelectItem value="Auto">Auto</SelectItem>
-            <SelectItem value="Flight">Flight</SelectItem>
-          </SelectContent>
-        </Select>
+        <Label>Amount (₹) *</Label>
+        <Input type="number" step="0.01" min="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" data-testid="input-expense-amount" />
+        {amount && Number(amount) <= 0 && <p className="text-xs text-destructive mt-1">Amount must be greater than 0</p>}
       </div>
+
+      {/* Base Location */}
       <div>
         <Label>Base Location *</Label>
         <Select value={expBaseLocation} onValueChange={setExpBaseLocation}>
@@ -1128,6 +1291,8 @@ function ExpensesSection({ requestId, droneNumber, baseLocation }: { requestId: 
           </SelectContent>
         </Select>
       </div>
+
+      {/* Remark */}
       <div>
         <Label>Remark</Label>
         <Input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Any additional notes..." data-testid="input-expense-remark" />
@@ -1135,105 +1300,50 @@ function ExpensesSection({ requestId, droneNumber, baseLocation }: { requestId: 
 
       <Separator />
 
+      {/* Bill Available */}
       <div className="space-y-3">
         <div className="flex items-center gap-3">
-          <Checkbox
-            id="billStatus"
-            checked={billStatus}
-            onCheckedChange={(checked) => {
-              setBillStatus(!!checked);
-              if (!checked) setBillfileUrl(null);
-            }}
-            data-testid="checkbox-bill-status"
-          />
+          <Checkbox id="billStatus" checked={billStatus}
+            onCheckedChange={(checked) => { setBillStatus(!!checked); if (!checked) setBillfileUrl(null); }}
+            data-testid="checkbox-bill-status" />
           <Label htmlFor="billStatus" className="cursor-pointer">Bill Available (YES)</Label>
         </div>
         {billStatus && (
-          <div className="ml-7 space-y-2">
-            <p className="text-xs text-muted-foreground">Upload bill image (mandatory) *</p>
-            <div className="flex gap-2">
-              <input
-                ref={billInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleFileUpload(f, 'bill');
-                }}
-              />
-              <Button type="button" variant="outline" size="sm" onClick={() => billInputRef.current?.click()} disabled={isUploading} data-testid="button-bill-upload">
-                <Upload className="h-3.5 w-3.5 mr-1" /> {isUploading ? 'Uploading...' : 'Browse'}
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => setBillCameraOpen(true)} disabled={isUploading} data-testid="button-bill-camera">
-                <Camera className="h-3.5 w-3.5 mr-1" /> Camera
-              </Button>
-            </div>
-            {billfileUrl && (
-              <div className="flex items-center gap-2 text-xs text-green-600">
-                <CheckCircle className="h-3.5 w-3.5" /> Bill image uploaded
-                <img src={billfileUrl} alt="bill" className="h-10 w-10 object-cover rounded border ml-2" />
-              </div>
-            )}
-            <CameraCapture
-              open={billCameraOpen}
-              onClose={() => setBillCameraOpen(false)}
-              onCapture={(file) => { handleFileUpload(file, 'bill'); setBillCameraOpen(false); }}
-              isUploading={isUploading}
-            />
+          <div className="ml-7">
+            <FileUploadField label="Upload bill" value={billfileUrl} onUpload={setBillfileUrl} inputRef={billInputRef} accept="image/*,.pdf" />
           </div>
         )}
       </div>
 
+      {/* Online Slip */}
       <div className="space-y-3">
         <div className="flex items-center gap-3">
-          <Checkbox
-            id="onlineSlip"
-            checked={onlineSlip}
-            onCheckedChange={(checked) => {
-              setOnlineSlip(!!checked);
-              if (!checked) setOnlineSlipfileUrl(null);
-            }}
-            data-testid="checkbox-online-slip"
-          />
+          <Checkbox id="onlineSlip" checked={onlineSlip}
+            onCheckedChange={(checked) => { setOnlineSlip(!!checked); if (!checked) setOnlineSlipfileUrl(null); }}
+            data-testid="checkbox-online-slip" />
           <Label htmlFor="onlineSlip" className="cursor-pointer">Online Slip Available (YES)</Label>
         </div>
         <div className="ml-7 text-xs text-muted-foreground">
-          Mode of Payment: <Badge variant="secondary" className="ml-1 no-default-hover-elevate no-default-active-elevate">{onlineSlip ? "Online" : "Cash"}</Badge>
+          Mode of Payment: <Badge variant="secondary" className="ml-1">{onlineSlip ? "Online" : "Cash"}</Badge>
         </div>
         {onlineSlip && (
-          <div className="ml-7 space-y-2">
-            <p className="text-xs text-muted-foreground">Upload online slip image (mandatory) *</p>
-            <div className="flex gap-2">
-              <input
-                ref={slipInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleFileUpload(f, 'slip');
-                }}
-              />
-              <Button type="button" variant="outline" size="sm" onClick={() => slipInputRef.current?.click()} disabled={isUploading} data-testid="button-slip-upload">
-                <Upload className="h-3.5 w-3.5 mr-1" /> {isUploading ? 'Uploading...' : 'Browse'}
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => setSlipCameraOpen(true)} disabled={isUploading} data-testid="button-slip-camera">
-                <Camera className="h-3.5 w-3.5 mr-1" /> Camera
-              </Button>
-            </div>
-            {onlineSlipfileUrl && (
-              <div className="flex items-center gap-2 text-xs text-green-600">
-                <CheckCircle className="h-3.5 w-3.5" /> Online slip uploaded
-                <img src={onlineSlipfileUrl} alt="slip" className="h-10 w-10 object-cover rounded border ml-2" />
-              </div>
-            )}
-            <CameraCapture
-              open={slipCameraOpen}
-              onClose={() => setSlipCameraOpen(false)}
-              onCapture={(file) => { handleFileUpload(file, 'slip'); setSlipCameraOpen(false); }}
-              isUploading={isUploading}
-            />
+          <div className="ml-7">
+            <FileUploadField label="Upload online slip" value={onlineSlipfileUrl} onUpload={setOnlineSlipfileUrl} inputRef={slipInputRef} accept="image/*,.pdf" />
+          </div>
+        )}
+      </div>
+
+      {/* Approval */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <Checkbox id="approvalCheck" checked={approvalChecked}
+            onCheckedChange={(checked) => { setApprovalChecked(!!checked); if (!checked) setApprovalFile(null); }}
+            data-testid="checkbox-approval" />
+          <Label htmlFor="approvalCheck" className="cursor-pointer">✔ Approval</Label>
+        </div>
+        {approvalChecked && (
+          <div className="ml-7">
+            <FileUploadField label="Upload Approval Document" value={approvalFile} onUpload={setApprovalFile} inputRef={approvalInputRef} accept="image/*,.pdf" />
           </div>
         )}
       </div>
@@ -1291,14 +1401,14 @@ function ExpensesSection({ requestId, droneNumber, baseLocation }: { requestId: 
                   <TableRow>
                     <TableHead className="w-[50px]">S.No.</TableHead>
                     <TableHead>Date</TableHead>
+                    <TableHead>Type</TableHead>
                     <TableHead>Description</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Bill</TableHead>
                     <TableHead>Online Slip</TableHead>
                     <TableHead>Payment</TableHead>
-                    <TableHead>Travel</TableHead>
                     <TableHead>Base Location</TableHead>
-                    <TableHead>Remark</TableHead>
+                    <TableHead>Approval</TableHead>
                     <TableHead className="w-[80px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1307,40 +1417,60 @@ function ExpensesSection({ requestId, droneNumber, baseLocation }: { requestId: 
                     <TableRow key={exp.id} data-testid={`row-expense-${exp.id}`}>
                       <TableCell className="font-mono text-xs">{idx + 1}</TableCell>
                       <TableCell className="text-sm whitespace-nowrap">{exp.date ? format(new Date(exp.date), 'dd/MM/yyyy') : '-'}</TableCell>
+                      <TableCell className="text-sm whitespace-nowrap">
+                        {(exp as any).expenseCategory ? (
+                          <div>
+                            <Badge variant="secondary" className="text-[10px]">{(exp as any).expenseCategory}</Badge>
+                            {(exp as any).expenseSubcategory && (
+                              <p className="text-[10px] text-muted-foreground mt-0.5">{(exp as any).expenseSubcategory}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">{exp.travelMode || '-'}</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-sm max-w-[200px] truncate">{exp.description}</TableCell>
                       <TableCell className="font-medium text-sm">{formatCurrency(Number(exp.amount))}</TableCell>
                       <TableCell>
                         {exp.billStatus ? (
                           <div className="flex items-center gap-1">
-                            <Badge variant="default" className="text-[10px] no-default-hover-elevate no-default-active-elevate bg-green-600">YES</Badge>
+                            <Badge variant="default" className="text-[10px] bg-green-600">YES</Badge>
                             {exp.billFile && (
                               <a href={exp.billFile} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-[10px]" onClick={(e) => e.stopPropagation()}>View</a>
                             )}
                           </div>
                         ) : (
-                          <Badge variant="outline" className="text-[10px] no-default-hover-elevate no-default-active-elevate">NO</Badge>
+                          <Badge variant="outline" className="text-[10px]">NO</Badge>
                         )}
                       </TableCell>
                       <TableCell>
                         {exp.onlineSlip ? (
                           <div className="flex items-center gap-1">
-                            <Badge variant="default" className="text-[10px] no-default-hover-elevate no-default-active-elevate bg-blue-600">YES</Badge>
+                            <Badge variant="default" className="text-[10px] bg-blue-600">YES</Badge>
                             {exp.slipFile && (
                               <a href={exp.slipFile} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-[10px]" onClick={(e) => e.stopPropagation()}>View</a>
                             )}
                           </div>
                         ) : (
-                          <Badge variant="outline" className="text-[10px] no-default-hover-elevate no-default-active-elevate">NO</Badge>
+                          <Badge variant="outline" className="text-[10px]">NO</Badge>
                         )}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate">
-                          {exp.paymentMode}
-                        </Badge>
+                        <Badge variant="secondary" className="text-[10px]">{exp.paymentMode}</Badge>
                       </TableCell>
-                      <TableCell className="text-sm">{exp.travelMode}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">{exp.baseLocation}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate">{exp.remarks || '-'}</TableCell>
+                      <TableCell>
+                        {(exp as any).approvalStatus ? (
+                          <div className="flex items-center gap-1">
+                            <Badge variant="default" className="text-[10px] bg-purple-600">YES</Badge>
+                            {(exp as any).approvalFile && (
+                              <a href={(exp as any).approvalFile} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-[10px]" onClick={(e) => e.stopPropagation()}>View</a>
+                            )}
+                          </div>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px]">NO</Badge>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <Button
