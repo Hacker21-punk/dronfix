@@ -1,9 +1,9 @@
-import { useServiceRequests, useCreateServiceRequest } from "@/hooks/use-service-requests";
+import { useServiceRequests, useCreateServiceRequest, useDeleteServiceRequest } from "@/hooks/use-service-requests";
 import { useCurrentUser, useUsers } from "@/hooks/use-users";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Clock, FolderOpen, FolderClosed, Loader2, CheckCircle2, XCircle, Filter, ArrowUpDown } from "lucide-react";
+import { Plus, Search, Clock, FolderOpen, FolderClosed, Loader2, CheckCircle2, XCircle, Filter, ArrowUpDown, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
@@ -257,6 +257,7 @@ export default function ServiceRequestsPage() {
                     </div>
                   </TableHead>
                   {!isLogistics && <TableHead>Assigned To</TableHead>}
+                  {canCreate && <TableHead className="w-[60px]">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -364,6 +365,11 @@ export default function ServiceRequestsPage() {
                             </span>
                           </TableCell>
                         )}
+                        {canCreate && (
+                          <TableCell>
+                            <DeleteRequestButton id={req.id} />
+                          </TableCell>
+                        )}
                       </TableRow>
                     );
                   })
@@ -381,6 +387,27 @@ export default function ServiceRequestsPage() {
 
       <CreateRequestDialog open={isCreateOpen} onOpenChange={setIsCreateOpen} />
     </div>
+  );
+}
+
+function DeleteRequestButton({ id }: { id: number }) {
+  const deleteMutation = useDeleteServiceRequest();
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+      data-testid={`button-delete-${id}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (window.confirm(`Are you sure you want to delete SR #${id.toString().padStart(4, '0')}? This action cannot be undone.`)) {
+          deleteMutation.mutate(id);
+        }
+      }}
+    >
+      <Trash2 className="h-4 w-4" />
+    </Button>
   );
 }
 

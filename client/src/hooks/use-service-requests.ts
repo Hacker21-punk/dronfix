@@ -57,6 +57,30 @@ export function useCreateServiceRequest() {
   });
 }
 
+export function useDeleteServiceRequest() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/service-requests/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error("Failed to delete service request");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.serviceRequests.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.reports.dashboard.path] });
+      toast({ title: "Success", description: "Service request deleted" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete request", variant: "destructive" });
+    },
+  });
+}
+
 export function useUpdateServiceRequest() {
   const queryClient = useQueryClient();
   const { toast } = useToast();

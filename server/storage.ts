@@ -39,6 +39,7 @@ export interface IStorage {
   createServiceRequest(data: InsertServiceRequest): Promise<any>;
   updateServiceRequest(id: number, data: UpdateServiceRequest): Promise<any>;
   assignEngineer(id: number, engineerId: string): Promise<any>;
+  deleteServiceRequest(id: number): Promise<void>;
 
   // Parts Requested
   addPartsRequested(serviceRequestId: number, items: { itemName: string; quantity: number }[]): Promise<any[]>;
@@ -255,6 +256,19 @@ export class DatabaseStorage implements IStorage {
       .set({ assignedEngineerId: engineerId })
       .where(eq(serviceRequests.id, id)).returning();
     return request;
+  }
+
+  async deleteServiceRequest(id: number) {
+    // Cascade delete all related child records first
+    await db.delete(images).where(eq(images.serviceRequestId, id));
+    await db.delete(documents).where(eq(documents.serviceRequestId, id));
+    await db.delete(partsConsumed).where(eq(partsConsumed.serviceRequestId, id));
+    await db.delete(partsRequested).where(eq(partsRequested.serviceRequestId, id));
+    await db.delete(expenses).where(eq(expenses.serviceRequestId, id));
+    await db.delete(invoices).where(eq(invoices.serviceRequestId, id));
+    await db.delete(logistics).where(eq(logistics.serviceRequestId, id));
+    // Then delete the service request itself
+    await db.delete(serviceRequests).where(eq(serviceRequests.id, id));
   }
 
   // ── Parts Requested ────────────────────────────────────────────────────────

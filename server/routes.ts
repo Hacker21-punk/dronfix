@@ -162,6 +162,15 @@ export async function registerRoutes(app: Express) {
     res.json(request);
   });
 
+  app.delete("/api/service-requests/:id", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
+    try {
+      await storage.deleteServiceRequest(Number(req.params.id));
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ── Documents ────────────────────────────────────────────────────────────
   app.post("/api/service-requests/:id/documents", jwtAuth, async (req: Request, res: Response) => {
     const { type, fileUrl } = req.body;
