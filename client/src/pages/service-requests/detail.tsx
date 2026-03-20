@@ -981,7 +981,7 @@ const INDIAN_STATES = [
 ];
 
 const EXPENSE_CATEGORIES = {
-  Travel: ["Train", "Bus", "Auto", "Cab", "Personal Bike/Car", "Bike Rental"],
+  Travel: ["Train", "Bus", "Auto", "Cab", "Personal Bike/Car", "Bike/Car Rental"],
   Food: ["Breakfast", "Brunch", "Lunch", "Dinner"],
   Stay: ["Hotel", "Lodge"],
   Others: [],
