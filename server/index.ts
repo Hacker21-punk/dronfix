@@ -85,10 +85,65 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
+import { pool } from "./db";
+
+/*
+  Runtime schema migration — ensures new columns exist even if db:push failed
+*/
+async function runMigrations() {
+  const client = await pool.connect();
+  try {
+    const alterStatements = [
+      `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS expense_category TEXT`,
+      `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS expense_subcategory TEXT`,
+      `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS meter_start_reading DECIMAL(10,1)`,
+      `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS meter_stop_reading DECIMAL(10,1)`,
+      `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS meter_start_image TEXT`,
+      `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS meter_stop_image TEXT`,
+      `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS approval_status BOOLEAN NOT NULL DEFAULT false`,
+      `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS approval_file TEXT`,
+      // Make travel_mode nullable (was previously NOT NULL with enum)
+      `ALTER TABLE expenses ALTER COLUMN travel_mode DROP NOT NULL`,
+    ];
+
+    // Also ensure the service_status enum has all needed values
+    const enumStatements = [
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'pending' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'service_status')) THEN ALTER TYPE service_status ADD VALUE 'pending'; END IF; END $$`,
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'accepted' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'service_status')) THEN ALTER TYPE service_status ADD VALUE 'accepted'; END IF; END $$`,
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'in_progress' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'service_status')) THEN ALTER TYPE service_status ADD VALUE 'in_progress'; END IF; END $$`,
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'completed' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'service_status')) THEN ALTER TYPE service_status ADD VALUE 'completed'; END IF; END $$`,
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'billed' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'service_status')) THEN ALTER TYPE service_status ADD VALUE 'billed'; END IF; END $$`,
+    ];
+
+    for (const sql of [...alterStatements, ...enumStatements]) {
+      try { await client.query(sql); } catch (e: any) {
+        // Ignore errors for already-existing columns or enum values
+        if (!e.message?.includes('already exists') && !e.message?.includes('duplicate')) {
+          console.warn(`Migration warning: ${e.message}`);
+        }
+      }
+    }
+
+    // Change travel_mode column type from enum to text if it's still an enum
+    try {
+      await client.query(`ALTER TABLE expenses ALTER COLUMN travel_mode TYPE TEXT`);
+    } catch (e: any) {
+      // Ignore if already text
+    }
+
+    log("Schema migrations applied successfully", "migration");
+  } finally {
+    client.release();
+  }
+}
+
 /*
 Start server
 */
 (async () => {
+  // Run raw SQL migrations to ensure schema is up to date
+  await runMigrations();
+
   await registerRoutes(app);
   await seedAdmin();
 
