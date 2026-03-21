@@ -265,7 +265,16 @@ export async function registerRoutes(app: Express) {
   app.post("/api/upload", jwtAuth, upload.single("file"), (req: Request, res: Response) => {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
     const fileUrl = `/uploads/${req.file.filename}`;
-    res.json({ url: fileUrl });
+    res.json({
+      url: fileUrl, // Keep for backwards compatibility if needed
+      uploadURL: fileUrl,
+      objectPath: fileUrl,
+      metadata: {
+        name: req.file.originalname,
+        size: req.file.size,
+        contentType: req.file.mimetype
+      }
+    });
   });
 
   // ── Pincode Lookup ───────────────────────────────────────────────────────
