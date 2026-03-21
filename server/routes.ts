@@ -186,8 +186,8 @@ export async function registerRoutes(app: Express) {
 
   // ── Images ───────────────────────────────────────────────────────────────
   app.post("/api/service-requests/:id/images", jwtAuth, async (req: Request, res: Response) => {
-    const { fileUrl, type } = req.body;
-    const image = await storage.addImage(Number(req.params.id), type, fileUrl);
+    const { fileUrl, type, latitude, longitude, capturedAt } = req.body;
+    const image = await storage.addImage(Number(req.params.id), type, fileUrl, { latitude, longitude, capturedAt });
     res.status(201).json(image);
   });
 
@@ -253,6 +253,162 @@ export async function registerRoutes(app: Express) {
   // ── Billed Requests ──────────────────────────────────────────────────────
   app.get("/api/billed-requests", jwtAuth, requireRole("admin", "account"), async (_req: Request, res: Response) => {
     res.json(await storage.getBilledRequests());
+  });
+
+  // ── Aadhaar OTP Verification ────────────────────────────────────────────
+  app.post("/api/service-requests/:id/aadhaar/send-otp", jwtAuth, async (req: Request, res: Response) => {
+    try {
+      const { aadhaarNumber } = req.body;
+      const serviceRequestId = Number(req.params.id);
+
+      const { aadhaarService } = await import("./services/aadhaar");
+
+      if (!aadhaarService.validateAadhaar(aadhaarNumber)) {
+        return res.status(400).json({ message: "Invalid Aadhaar number" });
+      }
+
+      // Check existing verification
+      const existing = await storage.getAadhaarVerification(serviceRequestId);
+      if (existing?.locked) {
+        return res.status(400).json({ message: "Aadhaar already verified and locked" });
+      }
+      if (existing && existing.retryCount >= 3) {
+        return res.status(429).json({ message: "Maximum OTP retries exceeded" });
+      }
+
+      const result = await aadhaarService.sendOtp(aadhaarNumber);
+      const maskedAadhaar = aadhaarService.maskAadhaar(aadhaarNumber);
+
+      if (existing) {
+        await storage.updateAadhaarVerification(existing.id, {
+          maskedAadhaar,
+          otpHash: result.otpHash,
+          otpExpiresAt: result.expiresAt,
+          retryCount: (existing.retryCount || 0) + 1,
+        });
+      } else {
+        await storage.createAadhaarVerification(serviceRequestId, {
+          maskedAadhaar,
+          otpHash: result.otpHash,
+          otpExpiresAt: result.expiresAt,
+        });
+      }
+
+      res.json({ success: true, message: result.message, maskedAadhaar });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/service-requests/:id/aadhaar/verify-otp", jwtAuth, async (req: Request, res: Response) => {
+    try {
+      const { otp } = req.body;
+      const serviceRequestId = Number(req.params.id);
+
+      const { aadhaarService } = await import("./services/aadhaar");
+
+      const verification = await storage.getAadhaarVerification(serviceRequestId);
+      if (!verification) return res.status(404).json({ message: "No OTP session found" });
+      if (verification.locked) return res.status(400).json({ message: "Already verified and locked" });
+
+      const result = await aadhaarService.verifyOtp(verification.otpHash || '', otp);
+
+      if (result.success) {
+        await storage.updateAadhaarVerification(verification.id, {
+          verified: true,
+          verifiedAt: new Date(),
+          locked: true,
+        });
+      }
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/service-requests/:id/aadhaar", jwtAuth, async (req: Request, res: Response) => {
+    const v = await storage.getAadhaarVerification(Number(req.params.id));
+    res.json(v || { verified: false });
+  });
+
+  // ── Job Cards ───────────────────────────────────────────────────────────
+  app.get("/api/service-requests/:id/job-card", jwtAuth, async (req: Request, res: Response) => {
+    const card = await storage.getJobCard(Number(req.params.id));
+    res.json(card);
+  });
+
+  app.put("/api/service-requests/:id/job-card", jwtAuth, async (req: Request, res: Response) => {
+    try {
+      const serviceRequestId = Number(req.params.id);
+      const userId = (req as any).user.userId;
+
+      const existing = await storage.getJobCard(serviceRequestId);
+      if (existing?.locked) {
+        // Only engineers can edit locked cards, and we log it
+        const role = (req as any).user.role;
+        if (role !== "engineer") return res.status(403).json({ message: "Job card is locked" });
+
+        // Log each changed field
+        for (const key of Object.keys(req.body)) {
+          if (key !== 'locked' && (existing as any)[key] !== req.body[key]) {
+            await storage.addEditLog({
+              entityType: "job_card",
+              entityId: existing.id,
+              field: key,
+              oldValue: String((existing as any)[key] || ""),
+              newValue: String(req.body[key] || ""),
+              editedBy: userId,
+            });
+          }
+        }
+      }
+
+      const card = await storage.upsertJobCard(serviceRequestId, {
+        ...req.body,
+        filledBy: userId,
+      });
+      res.json(card);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  // ── Feedback Forms ──────────────────────────────────────────────────────
+  app.get("/api/service-requests/:id/feedback", jwtAuth, async (req: Request, res: Response) => {
+    const form = await storage.getFeedbackForm(Number(req.params.id));
+    res.json(form);
+  });
+
+  app.put("/api/service-requests/:id/feedback", jwtAuth, async (req: Request, res: Response) => {
+    try {
+      const form = await storage.upsertFeedbackForm(Number(req.params.id), req.body);
+      res.json(form);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  // ── Signatures ──────────────────────────────────────────────────────────
+  app.get("/api/service-requests/:id/signatures", jwtAuth, async (req: Request, res: Response) => {
+    const sigs = await storage.getSignatures(Number(req.params.id));
+    res.json(sigs);
+  });
+
+  app.post("/api/service-requests/:id/signatures", jwtAuth, async (req: Request, res: Response) => {
+    try {
+      const { type, signatureData } = req.body;
+      const sig = await storage.upsertSignature(Number(req.params.id), type, signatureData);
+      res.json(sig);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  // ── Edit Logs ───────────────────────────────────────────────────────────
+  app.get("/api/edit-logs/:entityType/:entityId", jwtAuth, async (req: Request, res: Response) => {
+    const logs = await storage.getEditLogs(String(req.params.entityType), Number(req.params.entityId));
+    res.json(logs);
   });
 
   // ── Dashboard Stats ──────────────────────────────────────────────────────

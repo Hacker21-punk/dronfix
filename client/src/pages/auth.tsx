@@ -4,13 +4,21 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
-import { Loader2, AlertCircle, MapPin, Mail, Phone, FileText } from "lucide-react";
+import { Loader2, AlertCircle, MapPin, Mail, Phone, FileText, Shield, Wrench, Calculator, Truck, ArrowLeft } from "lucide-react";
 import hanronLogo from "@assets/hanron_logo_1771243986590.png";
+
+const roles = [
+  { id: "admin", label: "Admin", icon: Shield, color: "from-blue-600 to-blue-800", description: "Full system access" },
+  { id: "engineer", label: "Engineer", icon: Wrench, color: "from-emerald-600 to-emerald-800", description: "Field operations" },
+  { id: "account", label: "Accounts", icon: Calculator, color: "from-amber-600 to-amber-800", description: "Billing & finance" },
+  { id: "logistics", label: "Logistics", icon: Truck, color: "from-purple-600 to-purple-800", description: "Shipping & tracking" },
+];
 
 export default function AuthPage() {
   const { login, isLoggingIn, loginError } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [selectedRole, setSelectedRole] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,7 +91,7 @@ export default function AuthPage() {
         </div>
       </div>
 
-      {/* Right Panel — Login Form */}
+      {/* Right Panel — Role Selection + Login Form */}
       <div className="flex items-center justify-center p-8 bg-background">
         <div className="w-full max-w-md space-y-8">
 
@@ -95,72 +103,119 @@ export default function AuthPage() {
             />
 
             <h2 className="text-2xl font-bold tracking-tight">
-              Welcome back
+              {selectedRole ? "Sign In" : "Welcome to DroneFix"}
             </h2>
 
             <p className="text-muted-foreground">
-              Sign in to your account to continue
+              {selectedRole ? `Signing in as ${roles.find(r => r.id === selectedRole)?.label}` : "Select your role to continue"}
             </p>
           </div>
 
-          <Card className="border-border shadow-lg">
-            <CardContent className="pt-6">
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {loginError && (
-                  <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    {loginError}
-                  </div>
-                )}
+          {/* Role Selection Cards */}
+          {!selectedRole ? (
+            <div className="grid grid-cols-2 gap-4">
+              {roles.map((role) => {
+                const Icon = role.icon;
+                return (
+                  <button
+                    key={role.id}
+                    onClick={() => setSelectedRole(role.id)}
+                    className="group relative overflow-hidden rounded-xl border-2 border-border hover:border-primary/50 bg-card p-5 text-left transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5"
+                    data-testid={`role-${role.id}`}
+                  >
+                    <div className={`inline-flex items-center justify-center w-12 h-12 rounded-lg bg-gradient-to-br ${role.color} shadow-md mb-3`}>
+                      <Icon className="h-6 w-6 text-white" />
+                    </div>
+                    <h3 className="font-semibold text-foreground text-base">{role.label}</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">{role.description}</p>
 
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="admin@dronefix.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    autoFocus
-                    data-testid="input-login-email"
-                  />
-                </div>
+                    {/* Hover effect */}
+                    <div className={`absolute inset-0 bg-gradient-to-br ${role.color} opacity-0 group-hover:opacity-5 transition-opacity`} />
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <>
+              {/* Back button */}
+              <button
+                onClick={() => {
+                  setSelectedRole(null);
+                  setEmail("");
+                  setPassword("");
+                }}
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to role selection
+              </button>
 
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    data-testid="input-login-password"
-                  />
-                </div>
+              {/* Login Form */}
+              <Card className="border-border shadow-lg">
+                <CardContent className="pt-6">
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    {loginError && (
+                      <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        {loginError}
+                      </div>
+                    )}
 
-                <Button
-                  type="submit"
-                  className="w-full h-12 text-base shadow-lg shadow-primary/25"
-                  disabled={isLoggingIn || !email || !password}
-                  data-testid="button-login"
-                >
-                  {isLoggingIn ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Signing in...
-                    </>
-                  ) : (
-                    "Sign in"
-                  )}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder={
+                          selectedRole === "admin" ? "admin@dronefix.com" :
+                          selectedRole === "engineer" ? "engineer@dronefix.com" :
+                          selectedRole === "account" ? "accounts@dronefix.com" :
+                          "logistics@dronefix.com"
+                        }
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        autoFocus
+                        data-testid="input-login-email"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="password">Password</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        placeholder="Enter your password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        data-testid="input-login-password"
+                      />
+                    </div>
+
+                    <Button
+                      type="submit"
+                      className="w-full h-12 text-base shadow-lg shadow-primary/25"
+                      disabled={isLoggingIn || !email || !password}
+                      data-testid="button-login"
+                    >
+                      {isLoggingIn ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Signing in...
+                        </>
+                      ) : (
+                        `Sign in as ${roles.find(r => r.id === selectedRole)?.label}`
+                      )}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+            </>
+          )}
 
           <p className="text-center text-xs text-muted-foreground">
-            Default admin: admin@dronefix.com / Admin@123
+            Default admin: prashant@dronefix.com / Admin@123
           </p>
 
           {/* Mobile company info */}

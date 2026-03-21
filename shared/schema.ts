@@ -72,12 +72,15 @@ export const documents = pgTable("documents", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// ─── 6. IMAGES ───────────────────────────────────────────────────────────────
+// ─── 6. IMAGES (with geo-tagging) ────────────────────────────────────────────
 export const images = pgTable("images", {
   id: serial("id").primaryKey(),
   serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
-  type: text("type").notNull(), // 'before' or 'after'
+  type: text("type").notNull(), // 'before', 'after', 'customer_photo', 'engineer_photo'
   fileUrl: text("file_url").notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  capturedAt: timestamp("captured_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -132,6 +135,82 @@ export const logistics = pgTable("logistics", {
   shippingStatus: shippingStatusEnum("shipping_status").default("shipped"),
 });
 
+// ─── 10. AADHAAR VERIFICATIONS ───────────────────────────────────────────────
+export const aadhaarVerifications = pgTable("aadhaar_verifications", {
+  id: serial("id").primaryKey(),
+  serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
+  maskedAadhaar: text("masked_aadhaar").notNull(), // XXXX-XXXX-1234
+  otpHash: text("otp_hash"),
+  otpExpiresAt: timestamp("otp_expires_at"),
+  retryCount: integer("retry_count").notNull().default(0),
+  verified: boolean("verified").notNull().default(false),
+  verifiedAt: timestamp("verified_at"),
+  locked: boolean("locked").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ─── 11. JOB CARDS (Digital) ─────────────────────────────────────────────────
+export const jobCards = pgTable("job_cards", {
+  id: serial("id").primaryKey(),
+  serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
+  // Customer & Drone info (pre-filled from SR)
+  customerName: text("customer_name").notNull(),
+  droneModel: text("drone_model"),
+  droneSerialNumber: text("drone_serial_number"),
+  // Checklist fields
+  physicalCondition: text("physical_condition"), // Good / Damaged / etc
+  propellerStatus: text("propeller_status"),
+  motorStatus: text("motor_status"),
+  batteryStatus: text("battery_status"),
+  cameraGimbalStatus: text("camera_gimbal_status"),
+  gpsModule: text("gps_module"),
+  remoteController: text("remote_controller"),
+  // Diagnosis
+  diagnosis: text("diagnosis"),
+  rootCause: text("root_cause"),
+  actionTaken: text("action_taken"),
+  partsReplaced: text("parts_replaced"),
+  observations: text("observations"),
+  recommendations: text("recommendations"),
+  // Status
+  locked: boolean("locked").notNull().default(false),
+  filledBy: text("filled_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ─── 12. FEEDBACK FORMS ──────────────────────────────────────────────────────
+export const feedbackForms = pgTable("feedback_forms", {
+  id: serial("id").primaryKey(),
+  serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
+  rating: integer("rating").notNull(), // 1-5
+  remarks: text("remarks"),
+  locked: boolean("locked").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ─── 13. SIGNATURES ──────────────────────────────────────────────────────────
+export const signatures = pgTable("signatures", {
+  id: serial("id").primaryKey(),
+  serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
+  type: text("type").notNull(), // 'customer' or 'engineer'
+  signatureData: text("signature_data").notNull(), // base64 data URL
+  locked: boolean("locked").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ─── 14. EDIT LOGS ───────────────────────────────────────────────────────────
+export const editLogs = pgTable("edit_logs", {
+  id: serial("id").primaryKey(),
+  entityType: text("entity_type").notNull(), // 'job_card', 'document', 'feedback', etc
+  entityId: integer("entity_id").notNull(),
+  field: text("field").notNull(),
+  oldValue: text("old_value"),
+  newValue: text("new_value"),
+  editedBy: text("edited_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // ─── Relations ───────────────────────────────────────────────────────────────
 export const serviceRequestsRelations = relations(serviceRequests, ({ one, many }) => ({
   assignedEngineer: one(users, {
@@ -145,6 +224,10 @@ export const serviceRequestsRelations = relations(serviceRequests, ({ one, many 
   expenses: many(expenses),
   invoices: many(invoices),
   logistics: many(logistics),
+  aadhaarVerifications: many(aadhaarVerifications),
+  jobCards: many(jobCards),
+  feedbackForms: many(feedbackForms),
+  signatures: many(signatures),
 }));
 
 export const partsRequestedRelations = relations(partsRequested, ({ one }) => ({
@@ -204,6 +287,45 @@ export const logisticsRelations = relations(logistics, ({ one }) => ({
   }),
 }));
 
+export const aadhaarVerificationsRelations = relations(aadhaarVerifications, ({ one }) => ({
+  serviceRequest: one(serviceRequests, {
+    fields: [aadhaarVerifications.serviceRequestId],
+    references: [serviceRequests.id],
+  }),
+}));
+
+export const jobCardsRelations = relations(jobCards, ({ one }) => ({
+  serviceRequest: one(serviceRequests, {
+    fields: [jobCards.serviceRequestId],
+    references: [serviceRequests.id],
+  }),
+  engineer: one(users, {
+    fields: [jobCards.filledBy],
+    references: [users.id],
+  }),
+}));
+
+export const feedbackFormsRelations = relations(feedbackForms, ({ one }) => ({
+  serviceRequest: one(serviceRequests, {
+    fields: [feedbackForms.serviceRequestId],
+    references: [serviceRequests.id],
+  }),
+}));
+
+export const signaturesRelations = relations(signatures, ({ one }) => ({
+  serviceRequest: one(serviceRequests, {
+    fields: [signatures.serviceRequestId],
+    references: [serviceRequests.id],
+  }),
+}));
+
+export const editLogsRelations = relations(editLogs, ({ one }) => ({
+  editor: one(users, {
+    fields: [editLogs.editedBy],
+    references: [users.id],
+  }),
+}));
+
 // ─── Insert Schemas ──────────────────────────────────────────────────────────
 export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true, updatedAt: true });
 export const insertServiceRequestSchema = createInsertSchema(serviceRequests).omit({
@@ -219,6 +341,10 @@ export const insertImageSchema = createInsertSchema(images).omit({ id: true, cre
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, createdAt: true });
 export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true });
 export const insertLogisticsSchema = createInsertSchema(logistics).omit({ id: true });
+export const insertJobCardSchema = createInsertSchema(jobCards).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertFeedbackFormSchema = createInsertSchema(feedbackForms).omit({ id: true, createdAt: true });
+export const insertSignatureSchema = createInsertSchema(signatures).omit({ id: true, createdAt: true });
+export const insertAadhaarVerificationSchema = createInsertSchema(aadhaarVerifications).omit({ id: true, createdAt: true });
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 export type Inventory = typeof inventory.$inferSelect;
@@ -233,6 +359,13 @@ export type Expense = typeof expenses.$inferSelect;
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
 export type Invoice = typeof invoices.$inferSelect;
 export type Logistics = typeof logistics.$inferSelect;
+export type AadhaarVerification = typeof aadhaarVerifications.$inferSelect;
+export type JobCard = typeof jobCards.$inferSelect;
+export type InsertJobCard = z.infer<typeof insertJobCardSchema>;
+export type FeedbackForm = typeof feedbackForms.$inferSelect;
+export type InsertFeedbackForm = z.infer<typeof insertFeedbackFormSchema>;
+export type Signature = typeof signatures.$inferSelect;
+export type EditLog = typeof editLogs.$inferSelect;
 
 export type UpdateServiceRequest = Partial<InsertServiceRequest> & {
   status?: typeof serviceStatusEnum.enumValues[number];

@@ -10,6 +10,11 @@ import {
   expenses,
   invoices,
   logistics,
+  aadhaarVerifications,
+  jobCards,
+  feedbackForms,
+  signatures,
+  editLogs,
   type InsertInventory,
   type InsertServiceRequest,
   type InsertExpense,
@@ -52,7 +57,7 @@ export interface IStorage {
   getDocuments(serviceRequestId: number): Promise<any[]>;
 
   // Images
-  addImage(serviceRequestId: number, type: string, fileUrl: string): Promise<any>;
+  addImage(serviceRequestId: number, type: string, fileUrl: string, geoData?: { latitude?: string; longitude?: string; capturedAt?: string }): Promise<any>;
 
   // Expenses
   getExpenses(serviceRequestId: number): Promise<any[]>;
@@ -73,6 +78,27 @@ export interface IStorage {
   
   // Billing
   getBilledRequests(): Promise<any[]>;
+
+  // Aadhaar Verification
+  createAadhaarVerification(serviceRequestId: number, data: any): Promise<any>;
+  getAadhaarVerification(serviceRequestId: number): Promise<any>;
+  updateAadhaarVerification(id: number, data: any): Promise<any>;
+
+  // Job Cards
+  getJobCard(serviceRequestId: number): Promise<any>;
+  upsertJobCard(serviceRequestId: number, data: any): Promise<any>;
+
+  // Feedback Forms
+  getFeedbackForm(serviceRequestId: number): Promise<any>;
+  upsertFeedbackForm(serviceRequestId: number, data: any): Promise<any>;
+
+  // Signatures
+  getSignatures(serviceRequestId: number): Promise<any[]>;
+  upsertSignature(serviceRequestId: number, type: string, signatureData: string): Promise<any>;
+
+  // Edit Logs
+  addEditLog(data: { entityType: string; entityId: number; field: string; oldValue?: string; newValue?: string; editedBy?: string }): Promise<any>;
+  getEditLogs(entityType: string, entityId: number): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -188,7 +214,7 @@ export class DatabaseStorage implements IStorage {
     const [request] = await db.select().from(serviceRequests).where(eq(serviceRequests.id, id));
     if (!request) return null;
 
-    const [requestImages, requestDocuments, requestPartsConsumed, requestPartsRequested, requestExpenses, requestInvoices, requestLogistics] = await Promise.all([
+    const [requestImages, requestDocuments, requestPartsConsumed, requestPartsRequested, requestExpenses, requestInvoices, requestLogistics, requestJobCards, requestFeedback, requestSignatures, requestAadhaar] = await Promise.all([
       db.select().from(images).where(eq(images.serviceRequestId, id)),
       db.select().from(documents).where(eq(documents.serviceRequestId, id)),
       db.select().from(partsConsumed).where(eq(partsConsumed.serviceRequestId, id)),
@@ -196,6 +222,10 @@ export class DatabaseStorage implements IStorage {
       db.select().from(expenses).where(eq(expenses.serviceRequestId, id)),
       db.select().from(invoices).where(eq(invoices.serviceRequestId, id)),
       db.select().from(logistics).where(eq(logistics.serviceRequestId, id)),
+      db.select().from(jobCards).where(eq(jobCards.serviceRequestId, id)),
+      db.select().from(feedbackForms).where(eq(feedbackForms.serviceRequestId, id)),
+      db.select().from(signatures).where(eq(signatures.serviceRequestId, id)),
+      db.select().from(aadhaarVerifications).where(eq(aadhaarVerifications.serviceRequestId, id)),
     ]);
 
     // Resolve inventory item names for consumed parts
@@ -230,6 +260,10 @@ export class DatabaseStorage implements IStorage {
       expenses: requestExpenses,
       invoice: requestInvoices[0] || null,
       logistics: requestLogistics[0] || null,
+      jobCard: requestJobCards[0] || null,
+      feedback: requestFeedback[0] || null,
+      signatures: requestSignatures,
+      aadhaar: requestAadhaar[0] || null,
     };
   }
 
@@ -260,6 +294,11 @@ export class DatabaseStorage implements IStorage {
 
   async deleteServiceRequest(id: number) {
     // Cascade delete all related child records first
+    await db.delete(editLogs).where(eq(editLogs.entityId, id));
+    await db.delete(signatures).where(eq(signatures.serviceRequestId, id));
+    await db.delete(feedbackForms).where(eq(feedbackForms.serviceRequestId, id));
+    await db.delete(jobCards).where(eq(jobCards.serviceRequestId, id));
+    await db.delete(aadhaarVerifications).where(eq(aadhaarVerifications.serviceRequestId, id));
     await db.delete(images).where(eq(images.serviceRequestId, id));
     await db.delete(documents).where(eq(documents.serviceRequestId, id));
     await db.delete(partsConsumed).where(eq(partsConsumed.serviceRequestId, id));
@@ -316,11 +355,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── Images ─────────────────────────────────────────────────────────────────
-  async addImage(serviceRequestId: number, type: string, fileUrl: string) {
+  async addImage(serviceRequestId: number, type: string, fileUrl: string, geoData?: { latitude?: string; longitude?: string; capturedAt?: string }) {
     const [image] = await db.insert(images).values({
       serviceRequestId,
       type,
       fileUrl,
+      latitude: geoData?.latitude || null,
+      longitude: geoData?.longitude || null,
+      capturedAt: geoData?.capturedAt ? new Date(geoData.capturedAt) : null,
     }).returning();
     return image;
   }
@@ -499,6 +541,129 @@ export class DatabaseStorage implements IStorage {
         ...r,
         invoice: invoiceMap[r.id],
       }));
+  }
+
+  // ── Aadhaar Verification ──────────────────────────────────────────────────
+  async createAadhaarVerification(serviceRequestId: number, data: any) {
+    const [row] = await db.insert(aadhaarVerifications).values({
+      serviceRequestId,
+      maskedAadhaar: data.maskedAadhaar,
+      otpHash: data.otpHash,
+      otpExpiresAt: data.otpExpiresAt,
+      retryCount: data.retryCount || 0,
+      verified: data.verified || false,
+    }).returning();
+    return row;
+  }
+
+  async getAadhaarVerification(serviceRequestId: number) {
+    const [row] = await db.select().from(aadhaarVerifications)
+      .where(eq(aadhaarVerifications.serviceRequestId, serviceRequestId))
+      .orderBy(desc(aadhaarVerifications.createdAt))
+      .limit(1);
+    return row || null;
+  }
+
+  async updateAadhaarVerification(id: number, data: any) {
+    const [row] = await db.update(aadhaarVerifications)
+      .set(data)
+      .where(eq(aadhaarVerifications.id, id))
+      .returning();
+    return row;
+  }
+
+  // ── Job Cards ─────────────────────────────────────────────────────────────
+  async getJobCard(serviceRequestId: number) {
+    const [row] = await db.select().from(jobCards)
+      .where(eq(jobCards.serviceRequestId, serviceRequestId))
+      .limit(1);
+    return row || null;
+  }
+
+  async upsertJobCard(serviceRequestId: number, data: any) {
+    const existing = await this.getJobCard(serviceRequestId);
+    if (existing) {
+      const [row] = await db.update(jobCards)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(jobCards.id, existing.id))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(jobCards).values({
+      serviceRequestId,
+      ...data,
+    }).returning();
+    return row;
+  }
+
+  // ── Feedback Forms ────────────────────────────────────────────────────────
+  async getFeedbackForm(serviceRequestId: number) {
+    const [row] = await db.select().from(feedbackForms)
+      .where(eq(feedbackForms.serviceRequestId, serviceRequestId))
+      .limit(1);
+    return row || null;
+  }
+
+  async upsertFeedbackForm(serviceRequestId: number, data: any) {
+    const existing = await this.getFeedbackForm(serviceRequestId);
+    if (existing) {
+      const [row] = await db.update(feedbackForms)
+        .set(data)
+        .where(eq(feedbackForms.id, existing.id))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(feedbackForms).values({
+      serviceRequestId,
+      rating: data.rating,
+      remarks: data.remarks,
+    }).returning();
+    return row;
+  }
+
+  // ── Signatures ────────────────────────────────────────────────────────────
+  async getSignatures(serviceRequestId: number) {
+    return db.select().from(signatures)
+      .where(eq(signatures.serviceRequestId, serviceRequestId));
+  }
+
+  async upsertSignature(serviceRequestId: number, type: string, signatureData: string) {
+    const [existing] = await db.select().from(signatures)
+      .where(and(
+        eq(signatures.serviceRequestId, serviceRequestId),
+        eq(signatures.type, type)
+      ))
+      .limit(1);
+
+    if (existing) {
+      const [row] = await db.update(signatures)
+        .set({ signatureData })
+        .where(eq(signatures.id, existing.id))
+        .returning();
+      return row;
+    }
+
+    const [row] = await db.insert(signatures).values({
+      serviceRequestId,
+      type,
+      signatureData,
+    }).returning();
+    return row;
+  }
+
+  // ── Edit Logs ─────────────────────────────────────────────────────────────
+  async addEditLog(data: { entityType: string; entityId: number; field: string; oldValue?: string; newValue?: string; editedBy?: string }) {
+    const [row] = await db.insert(editLogs).values(data).returning();
+    return row;
+  }
+
+  async getEditLogs(entityType: string, entityId: number) {
+    return db.select().from(editLogs)
+      .where(and(
+        eq(editLogs.entityType, entityType),
+        eq(editLogs.entityId, entityId)
+      ))
+      .orderBy(desc(editLogs.createdAt));
   }
 }
 

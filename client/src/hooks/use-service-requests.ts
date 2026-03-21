@@ -303,3 +303,170 @@ export function useDashboardStats() {
     },
   });
 }
+
+// ── Aadhaar OTP Hooks ─────────────────────────────────────────────────────
+export function useAadhaarStatus(serviceRequestId: number) {
+  return useQuery({
+    queryKey: ['/api/service-requests', serviceRequestId, 'aadhaar'],
+    queryFn: async () => {
+      const res = await fetch(`/api/service-requests/${serviceRequestId}/aadhaar`, {
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error("Failed to fetch Aadhaar status");
+      return res.json();
+    },
+    enabled: !!serviceRequestId,
+  });
+}
+
+export function useSendAadhaarOtp() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, aadhaarNumber }: { id: number; aadhaarNumber: string }) => {
+      const res = await apiRequest("POST", `/api/service-requests/${id}/aadhaar/send-otp`, { aadhaarNumber });
+      return res.json();
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/service-requests', variables.id, 'aadhaar'] });
+      toast({ title: "OTP Sent", description: data.message });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
+export function useVerifyAadhaarOtp() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, otp }: { id: number; otp: string }) => {
+      const res = await apiRequest("POST", `/api/service-requests/${id}/aadhaar/verify-otp`, { otp });
+      return res.json();
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/service-requests', variables.id, 'aadhaar'] });
+      queryClient.invalidateQueries({ queryKey: [api.serviceRequests.get.path, variables.id] });
+      if (data.success) {
+        toast({ title: "Verified", description: "Aadhaar verification successful" });
+      } else {
+        toast({ title: "Failed", description: data.message, variant: "destructive" });
+      }
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
+// ── Job Card Hooks ────────────────────────────────────────────────────────
+export function useJobCard(serviceRequestId: number) {
+  return useQuery({
+    queryKey: ['/api/service-requests', serviceRequestId, 'job-card'],
+    queryFn: async () => {
+      const res = await fetch(`/api/service-requests/${serviceRequestId}/job-card`, {
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error("Failed to fetch job card");
+      return res.json();
+    },
+    enabled: !!serviceRequestId,
+  });
+}
+
+export function useUpsertJobCard() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: number; [key: string]: any }) => {
+      const res = await apiRequest("PUT", `/api/service-requests/${id}/job-card`, data);
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/service-requests', variables.id, 'job-card'] });
+      queryClient.invalidateQueries({ queryKey: [api.serviceRequests.get.path, variables.id] });
+      toast({ title: "Success", description: "Job card saved" });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
+// ── Feedback Form Hooks ───────────────────────────────────────────────────
+export function useFeedbackForm(serviceRequestId: number) {
+  return useQuery({
+    queryKey: ['/api/service-requests', serviceRequestId, 'feedback'],
+    queryFn: async () => {
+      const res = await fetch(`/api/service-requests/${serviceRequestId}/feedback`, {
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error("Failed to fetch feedback");
+      return res.json();
+    },
+    enabled: !!serviceRequestId,
+  });
+}
+
+export function useUpsertFeedbackForm() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: number; rating: number; remarks?: string }) => {
+      const res = await apiRequest("PUT", `/api/service-requests/${id}/feedback`, data);
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/service-requests', variables.id, 'feedback'] });
+      queryClient.invalidateQueries({ queryKey: [api.serviceRequests.get.path, variables.id] });
+      toast({ title: "Success", description: "Feedback saved" });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
+// ── Signature Hooks ───────────────────────────────────────────────────────
+export function useSignatures(serviceRequestId: number) {
+  return useQuery({
+    queryKey: ['/api/service-requests', serviceRequestId, 'signatures'],
+    queryFn: async () => {
+      const res = await fetch(`/api/service-requests/${serviceRequestId}/signatures`, {
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error("Failed to fetch signatures");
+      return res.json();
+    },
+    enabled: !!serviceRequestId,
+  });
+}
+
+export function useUpsertSignature() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, type, signatureData }: { id: number; type: string; signatureData: string }) => {
+      const res = await apiRequest("POST", `/api/service-requests/${id}/signatures`, { type, signatureData });
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/service-requests', variables.id, 'signatures'] });
+      queryClient.invalidateQueries({ queryKey: [api.serviceRequests.get.path, variables.id] });
+      toast({ title: "Success", description: "Signature saved" });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}

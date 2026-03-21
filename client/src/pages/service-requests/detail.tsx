@@ -11,7 +11,16 @@ import {
   useExpenses,
   useAddExpense,
   useUpdateExpense,
-  useDeleteExpense
+  useDeleteExpense,
+  useAadhaarStatus,
+  useSendAadhaarOtp,
+  useVerifyAadhaarOtp,
+  useJobCard,
+  useUpsertJobCard,
+  useFeedbackForm,
+  useUpsertFeedbackForm,
+  useSignatures,
+  useUpsertSignature,
 } from "@/hooks/use-service-requests";
 import { useInventory } from "@/hooks/use-inventory";
 import { useCurrentUser, useUsers } from "@/hooks/use-users";
@@ -20,7 +29,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Calendar, CheckCircle, Upload, Wrench, Download, Camera, User, FileText, ArrowLeft, FolderOpen, Loader2, ZoomIn, X, Truck, Receipt, Plus, Trash2, IndianRupee, Pencil
+  Calendar, CheckCircle, Upload, Wrench, Download, Camera, User, FileText, ArrowLeft, FolderOpen, Loader2, ZoomIn, X, Truck, Receipt, Plus, Trash2, IndianRupee, Pencil, Shield, Star, PenTool
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -35,6 +44,8 @@ import { useState, useRef, useCallback } from "react";
 import { useUpload } from "@/hooks/use-upload";
 import { CameraCapture } from "@/components/camera-capture";
 import { formatCurrency } from "@/lib/utils";
+import { SignaturePad } from "@/components/signature-pad";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
@@ -253,6 +264,20 @@ export default function ServiceRequestDetail() {
               />
             </CardContent>
           </Card>
+
+          {/* Aadhaar Verification Section */}
+          {(role === 'engineer' || role === 'admin') && (
+            <AadhaarSection requestId={requestId} />
+          )}
+
+          {/* Digital Job Card */}
+          <JobCardSection requestId={requestId} request={request} role={role} />
+
+          {/* Customer Feedback */}
+          <FeedbackSection requestId={requestId} role={role} />
+
+          {/* Digital Signatures */}
+          <SignatureSection requestId={requestId} role={role} />
 
           {/* Invoice Details (if filled) */}
           {request.invoiceNumber && (
@@ -1497,6 +1522,362 @@ function ExpensesSection({ requestId, droneNumber, baseLocation }: { requestId: 
             </div>
           </>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Aadhaar Verification Section ──────────────────────────────────────────
+function AadhaarSection({ requestId }: { requestId: number }) {
+  const { data: aadhaar } = useAadhaarStatus(requestId);
+  const sendOtpMutation = useSendAadhaarOtp();
+  const verifyOtpMutation = useVerifyAadhaarOtp();
+  const [aadhaarNumber, setAadhaarNumber] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+
+  const handleSendOtp = () => {
+    sendOtpMutation.mutate({ id: requestId, aadhaarNumber }, {
+      onSuccess: () => setOtpSent(true),
+    });
+  };
+
+  const handleVerifyOtp = () => {
+    verifyOtpMutation.mutate({ id: requestId, otp });
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Shield className="h-4 w-4 text-blue-600" /> Aadhaar Verification
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {aadhaar?.verified ? (
+          <div className="flex items-center gap-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+            <CheckCircle className="h-5 w-5 text-green-600" />
+            <div>
+              <p className="text-sm font-medium text-green-700 dark:text-green-400">Aadhaar Verified</p>
+              <p className="text-xs text-green-600 dark:text-green-500">{aadhaar.maskedAadhaar}</p>
+            </div>
+            {aadhaar.locked && <Badge variant="outline" className="ml-auto text-xs">🔒 Locked</Badge>}
+          </div>
+        ) : !otpSent ? (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="aadhaar">Aadhaar Number</Label>
+              <Input
+                id="aadhaar"
+                placeholder="Enter 12-digit Aadhaar"
+                value={aadhaarNumber}
+                onChange={(e) => setAadhaarNumber(e.target.value.replace(/\D/g, "").slice(0, 12))}
+                maxLength={12}
+              />
+            </div>
+            <Button onClick={handleSendOtp} disabled={aadhaarNumber.length !== 12 || sendOtpMutation.isPending} className="w-full">
+              {sendOtpMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Sending...</> : "Send OTP"}
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">OTP sent to Aadhaar-linked mobile number</p>
+            <div className="space-y-1.5">
+              <Label htmlFor="otp">Enter OTP</Label>
+              <Input
+                id="otp"
+                placeholder="6-digit OTP"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                maxLength={6}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleVerifyOtp} disabled={otp.length !== 6 || verifyOtpMutation.isPending} className="flex-1">
+                {verifyOtpMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Verifying...</> : "Verify OTP"}
+              </Button>
+              <Button variant="outline" onClick={() => { setOtpSent(false); setOtp(""); }}>
+                Resend
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Digital Job Card Section ──────────────────────────────────────────────
+function JobCardSection({ requestId, request, role }: { requestId: number; request: any; role: string }) {
+  const { data: jobCard } = useJobCard(requestId);
+  const upsertMutation = useUpsertJobCard();
+  const [isEditing, setIsEditing] = useState(false);
+  const [form, setForm] = useState<any>({});
+
+  const startEditing = () => {
+    setForm({
+      customerName: jobCard?.customerName || request.customerName || "",
+      droneModel: jobCard?.droneModel || request.droneModel || "",
+      droneSerialNumber: jobCard?.droneSerialNumber || request.serialNumber || "",
+      physicalCondition: jobCard?.physicalCondition || "",
+      propellerStatus: jobCard?.propellerStatus || "",
+      motorStatus: jobCard?.motorStatus || "",
+      batteryStatus: jobCard?.batteryStatus || "",
+      cameraGimbalStatus: jobCard?.cameraGimbalStatus || "",
+      gpsModule: jobCard?.gpsModule || "",
+      remoteController: jobCard?.remoteController || "",
+      diagnosis: jobCard?.diagnosis || "",
+      rootCause: jobCard?.rootCause || "",
+      actionTaken: jobCard?.actionTaken || "",
+      partsReplaced: jobCard?.partsReplaced || "",
+      observations: jobCard?.observations || "",
+      recommendations: jobCard?.recommendations || "",
+    });
+    setIsEditing(true);
+  };
+
+  const handleSave = () => {
+    upsertMutation.mutate({ id: requestId, ...form }, {
+      onSuccess: () => setIsEditing(false),
+    });
+  };
+
+  const statusOptions = ["Good", "Damaged", "Missing", "N/A"];
+
+  const FieldRow = ({ label, field }: { label: string; field: string }) => (
+    <div className="space-y-1">
+      <Label className="text-xs">{label}</Label>
+      {isEditing ? (
+        <Select value={form[field] || ""} onValueChange={(v) => setForm((p: any) => ({ ...p, [field]: v }))}>
+          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
+          <SelectContent>
+            {statusOptions.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      ) : (
+        <p className="text-sm">{jobCard?.[field] || <span className="text-muted-foreground italic">Not filled</span>}</p>
+      )}
+    </div>
+  );
+
+  const TextRow = ({ label, field }: { label: string; field: string }) => (
+    <div className="space-y-1">
+      <Label className="text-xs">{label}</Label>
+      {isEditing ? (
+        <Textarea
+          className="text-xs min-h-[60px]"
+          value={form[field] || ""}
+          onChange={(e) => setForm((p: any) => ({ ...p, [field]: e.target.value }))}
+        />
+      ) : (
+        <p className="text-sm whitespace-pre-wrap">{jobCard?.[field] || <span className="text-muted-foreground italic">Not filled</span>}</p>
+      )}
+    </div>
+  );
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="flex items-center gap-2">
+          <FileText className="h-4 w-4 text-emerald-600" /> Digital Job Card
+        </CardTitle>
+        {(role === 'engineer' || role === 'admin') && !isEditing && (
+          <Button variant="ghost" size="sm" onClick={startEditing}>
+            <Pencil className="h-3.5 w-3.5 mr-1" /> {jobCard ? "Edit" : "Fill"}
+          </Button>
+        )}
+      </CardHeader>
+      <CardContent>
+        {!jobCard && !isEditing ? (
+          <div className="text-center py-6 text-sm text-muted-foreground">
+            <FileText className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+            No job card filled yet
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Customer</Label>
+                {isEditing ? (
+                  <Input className="h-8 text-xs" value={form.customerName} onChange={(e) => setForm((p: any) => ({ ...p, customerName: e.target.value }))} />
+                ) : (
+                  <p className="text-sm font-medium">{jobCard?.customerName}</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Drone Model</Label>
+                {isEditing ? (
+                  <Input className="h-8 text-xs" value={form.droneModel} onChange={(e) => setForm((p: any) => ({ ...p, droneModel: e.target.value }))} />
+                ) : (
+                  <p className="text-sm">{jobCard?.droneModel}</p>
+                )}
+              </div>
+            </div>
+
+            <Separator />
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Component Checklist</p>
+            <div className="grid grid-cols-2 gap-3">
+              <FieldRow label="Physical Condition" field="physicalCondition" />
+              <FieldRow label="Propeller" field="propellerStatus" />
+              <FieldRow label="Motor" field="motorStatus" />
+              <FieldRow label="Battery" field="batteryStatus" />
+              <FieldRow label="Camera/Gimbal" field="cameraGimbalStatus" />
+              <FieldRow label="GPS Module" field="gpsModule" />
+              <FieldRow label="Remote Controller" field="remoteController" />
+            </div>
+
+            <Separator />
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Diagnosis & Action</p>
+            <TextRow label="Diagnosis" field="diagnosis" />
+            <TextRow label="Root Cause" field="rootCause" />
+            <TextRow label="Action Taken" field="actionTaken" />
+            <TextRow label="Parts Replaced" field="partsReplaced" />
+            <TextRow label="Observations" field="observations" />
+            <TextRow label="Recommendations" field="recommendations" />
+
+            {isEditing && (
+              <div className="flex gap-2 pt-2">
+                <Button onClick={handleSave} disabled={upsertMutation.isPending} className="flex-1">
+                  {upsertMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                  Save Job Card
+                </Button>
+                <Button variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
+              </div>
+            )}
+
+            {jobCard?.locked && (
+              <Badge variant="outline" className="text-xs">🔒 Locked after submission</Badge>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Customer Feedback Section ─────────────────────────────────────────────
+function FeedbackSection({ requestId, role }: { requestId: number; role: string }) {
+  const { data: feedback } = useFeedbackForm(requestId);
+  const upsertMutation = useUpsertFeedbackForm();
+  const [isEditing, setIsEditing] = useState(false);
+  const [rating, setRating] = useState(0);
+  const [remarks, setRemarks] = useState("");
+
+  const startEditing = () => {
+    setRating(feedback?.rating || 0);
+    setRemarks(feedback?.remarks || "");
+    setIsEditing(true);
+  };
+
+  const handleSave = () => {
+    if (rating < 1) return;
+    upsertMutation.mutate({ id: requestId, rating, remarks }, {
+      onSuccess: () => setIsEditing(false),
+    });
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="flex items-center gap-2">
+          <Star className="h-4 w-4 text-amber-500" /> Customer Feedback
+        </CardTitle>
+        {(role === 'engineer' || role === 'admin') && !isEditing && (
+          <Button variant="ghost" size="sm" onClick={startEditing}>
+            <Pencil className="h-3.5 w-3.5 mr-1" /> {feedback ? "Edit" : "Fill"}
+          </Button>
+        )}
+      </CardHeader>
+      <CardContent>
+        {!feedback && !isEditing ? (
+          <div className="text-center py-6 text-sm text-muted-foreground">
+            <Star className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+            No feedback received yet
+          </div>
+        ) : isEditing ? (
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Rating</Label>
+              <div className="flex gap-1">
+                {[1, 2, 3, 4, 5].map(star => (
+                  <button
+                    key={star}
+                    onClick={() => setRating(star)}
+                    className={`p-1 transition-colors ${star <= rating ? 'text-amber-500' : 'text-slate-300 hover:text-amber-300'}`}
+                  >
+                    <Star className={`h-7 w-7 ${star <= rating ? 'fill-amber-500' : ''}`} />
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Customer Remarks</Label>
+              <Textarea
+                placeholder="Customer comments..."
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleSave} disabled={rating < 1 || upsertMutation.isPending} className="flex-1">
+                {upsertMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                Save Feedback
+              </Button>
+              <Button variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex gap-0.5">
+              {[1, 2, 3, 4, 5].map(star => (
+                <Star key={star} className={`h-5 w-5 ${star <= (feedback?.rating || 0) ? 'fill-amber-500 text-amber-500' : 'text-slate-300'}`} />
+              ))}
+              <span className="ml-2 text-sm font-medium">{feedback?.rating}/5</span>
+            </div>
+            {feedback?.remarks && (
+              <p className="text-sm text-muted-foreground italic">"{feedback.remarks}"</p>
+            )}
+            {feedback?.locked && <Badge variant="outline" className="text-xs">🔒 Locked</Badge>}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Digital Signatures Section ────────────────────────────────────────────
+function SignatureSection({ requestId, role }: { requestId: number; role: string }) {
+  const { data: sigs } = useSignatures(requestId);
+  const upsertMutation = useUpsertSignature();
+
+  const customerSig = sigs?.find((s: any) => s.type === "customer");
+  const engineerSig = sigs?.find((s: any) => s.type === "engineer");
+
+  const handleSave = (type: string, dataUrl: string) => {
+    upsertMutation.mutate({ id: requestId, type, signatureData: dataUrl });
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <PenTool className="h-4 w-4 text-indigo-600" /> Digital Signatures
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <SignaturePad
+          label="Customer Signature"
+          onSave={(dataUrl) => handleSave("customer", dataUrl)}
+          existingSignature={customerSig?.signatureData}
+          locked={customerSig?.locked || role === 'account' || role === 'logistics'}
+        />
+        <Separator />
+        <SignaturePad
+          label="Engineer Signature"
+          onSave={(dataUrl) => handleSave("engineer", dataUrl)}
+          existingSignature={engineerSig?.signatureData}
+          locked={engineerSig?.locked || role === 'account' || role === 'logistics'}
+        />
       </CardContent>
     </Card>
   );
