@@ -1,9 +1,10 @@
 import { useParams, useLocation } from "wouter";
-import { 
-  useServiceRequest, 
-  useUpdateServiceRequest, 
-  useConsumePart, 
+import {
+  useServiceRequest,
+  useUpdateServiceRequest,
+  useConsumePart,
   useUploadServiceImage,
+  useUploadDocument,
   useAssignEngineer,
   useSubmitInvoice,
   useSubmitLogistics,
@@ -48,6 +49,7 @@ export default function ServiceRequestDetail() {
   const { data: request, isLoading } = useServiceRequest(requestId);
   const { data: profile } = useCurrentUser();
   const updateMutation = useUpdateServiceRequest();
+  const uploadDocumentMutation = useUploadDocument();
   
   if (isLoading || !request) {
     return <div className="p-10 text-center animate-pulse">Loading request details...</div>;
@@ -221,45 +223,34 @@ export default function ServiceRequestDetail() {
             <CardContent className="space-y-3">
               <DocumentUpload 
                 label="Job Sheet" 
-                url={request.jobSheetUrl} 
+                url={request.documents?.find((d: any) => d.type === 'job_sheet')?.fileUrl} 
                 canUpload={role === 'engineer'}
-                onUpload={(url) => updateMutation.mutate({ id: requestId, jobSheetUrl: url })} 
+                onUpload={(url) => uploadDocumentMutation.mutate({ id: requestId, type: 'job_sheet', fileUrl: url })} 
               />
               <DocumentUpload 
                 label="Feedback Form" 
-                url={request.feedbackFormUrl} 
+                url={request.documents?.find((d: any) => d.type === 'feedback')?.fileUrl} 
                 canUpload={role === 'engineer'}
-                onUpload={(url) => updateMutation.mutate({ id: requestId, feedbackFormUrl: url })} 
+                onUpload={(url) => uploadDocumentMutation.mutate({ id: requestId, type: 'feedback', fileUrl: url })} 
               />
               <DocumentUpload 
                 label="Crash Report" 
-                url={request.crashReportUrl} 
+                url={request.documents?.find((d: any) => d.type === 'crash_report')?.fileUrl} 
                 canUpload={role === 'engineer'}
-                onUpload={(url) => updateMutation.mutate({ id: requestId, crashReportUrl: url })} 
+                onUpload={(url) => uploadDocumentMutation.mutate({ id: requestId, type: 'crash_report', fileUrl: url })} 
               />
               <DocumentUpload 
                 label="Audit Report" 
-                url={request.auditReportUrl} 
+                url={request.documents?.find((d: any) => d.type === 'audit_report')?.fileUrl} 
                 canUpload={role === 'engineer'}
-                onUpload={(url) => updateMutation.mutate({ id: requestId, auditReportUrl: url })} 
+                onUpload={(url) => uploadDocumentMutation.mutate({ id: requestId, type: 'audit_report', fileUrl: url })} 
               />
               <DocumentUpload 
                 label="Log Report" 
-                url={request.logReportUrl} 
+                url={request.documents?.find((d: any) => d.type === 'log_report')?.fileUrl} 
                 canUpload={role === 'engineer'}
-                onUpload={(url) => updateMutation.mutate({ id: requestId, logReportUrl: url })} 
+                onUpload={(url) => uploadDocumentMutation.mutate({ id: requestId, type: 'log_report', fileUrl: url })} 
               />
-              {role === 'account' && (
-                <>
-                  <Separator className="my-2" />
-                  <DocumentUpload 
-                    label="Invoice" 
-                    url={request.invoiceUrl} 
-                    canUpload={true}
-                    onUpload={(url) => updateMutation.mutate({ id: requestId, invoiceUrl: url })} 
-                  />
-                </>
-              )}
             </CardContent>
           </Card>
 
@@ -1163,7 +1154,7 @@ function ExpensesSection({ requestId, droneNumber, baseLocation }: { requestId: 
   // Helper to render a file upload row
   const FileUploadField = ({ label, value, onUpload, inputRef, accept = "image/*,.pdf" }: {
     label: string; value: string | null; onUpload: (url: string | null) => void;
-    inputRef: React.RefObject<HTMLInputElement | null>; accept?: string;
+    inputRef: React.RefObject<HTMLInputElement>; accept?: string;
   }) => (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">{label} *</p>

@@ -108,6 +108,8 @@ async function runMigrations() {
 
     // Also ensure the service_status enum has all needed values
     const enumStatements = [
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'open' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'service_status')) THEN ALTER TYPE service_status ADD VALUE 'open'; END IF; END $$`,
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'assigned' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'service_status')) THEN ALTER TYPE service_status ADD VALUE 'assigned'; END IF; END $$`,
       `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'pending' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'service_status')) THEN ALTER TYPE service_status ADD VALUE 'pending'; END IF; END $$`,
       `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'accepted' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'service_status')) THEN ALTER TYPE service_status ADD VALUE 'accepted'; END IF; END $$`,
       `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'in_progress' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'service_status')) THEN ALTER TYPE service_status ADD VALUE 'in_progress'; END IF; END $$`,

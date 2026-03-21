@@ -1,0 +1,25 @@
+client/src/pages/service-requests/detail.tsx(104,22): error TS1005: ';' expected.
+client/src/pages/service-requests/detail.tsx(104,26): error TS1005: ';' expected.
+client/src/pages/service-requests/detail.tsx(104,39): error TS1005: ';' expected.
+client/src/pages/service-requests/detail.tsx(104,57): error TS1005: ';' expected.
+client/src/pages/service-requests/detail.tsx(104,72): error TS1005: ';' expected.
+client/src/pages/service-requests/detail.tsx(104,80): error TS1005: ';' expected.
+client/src/pages/service-requests/detail.tsx(104,90): error TS1005: ';' expected.
+client/src/pages/service-requests/detail.tsx(104,105): error TS1005: ';' expected.
+client/src/pages/service-requests/detail.tsx(105,18): error TS1434: Unexpected keyword or identifier.
+client/src/pages/service-requests/detail.tsx(131,81): error TS1005: ';' expected.
+client/src/pages/service-requests/detail.tsx(280,110): error TS1005: ';' expected.
+client/src/pages/service-requests/detail.tsx(280,121): error TS1161: Unterminated regular expression literal.
+client/src/pages/service-requests/detail.tsx(280,139): error TS1005: ';' expected.
+client/src/pages/service-requests/detail.tsx(280,140): error TS1128: Declaration or statement expected.
+client/src/pages/service-requests/detail.tsx(280,141): error TS1109: Expression expected.
+client/src/pages/service-requests/detail.tsx(281,54): error TS1005: ';' expected.
+client/src/pages/service-requests/detail.tsx(281,63): error TS1434: Unexpected keyword or identifier.
+client/src/pages/service-requests/detail.tsx(282,14): error TS1128: Declaration or statement expected.
+client/src/pages/service-requests/detail.tsx(283,12): error TS1109: Expression expected.
+client/src/pages/service-requests/detail.tsx(283,13): error TS1128: Declaration or statement expected.
+client/src/pages/service-requests/detail.tsx(285,9): error TS1128: Declaration or statement expected.
+client/src/pages/service-requests/detail.tsx(286,7): error TS1109: Expression expected.
+client/src/pages/service-requests/detail.tsx(287,5): error TS1109: Expression expected.
+client/src/pages/service-requests/detail.tsx(288,3): error TS1109: Expression expected.
+client/src/pages/service-requests/detail.tsx(289,1): error TS1128: Declaration or statement expected.

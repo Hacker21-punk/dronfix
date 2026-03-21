@@ -8,7 +8,7 @@ export * from "./models/auth";
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
 export const serviceTypeEnum = pgEnum("service_type", ["L1", "L2", "L3"]);
-export const serviceStatusEnum = pgEnum("service_status", ["pending", "accepted", "in_progress", "completed", "billed"]);
+export const serviceStatusEnum = pgEnum("service_status", ["pending", "open", "assigned", "accepted", "in_progress", "completed", "billed"]);
 export const shippingStatusEnum = pgEnum("shipping_status", ["shipped", "in_transit", "delivered"]);
 export const modeOfTravelEnum = pgEnum("mode_of_travel", ["Train", "Bus", "Auto", "Flight"]);
 export const documentTypeEnum = pgEnum("document_type", ["job_sheet", "feedback", "crash_report", "audit_report", "log_report"]);

@@ -1,0 +1,8 @@
+FAIL: * -> Missing parameter name at index 1: *
+FAIL: /(.*) -> Missing parameter name at index 4: /(.*)
+OK: /*splat
+FAIL: /*.+ -> Missing parameter name at index 2: /*.+
+FAIL: /* -> Missing parameter name at index 2: /*
+FAIL: /:splat* -> Missing parameter name at index 8: /:splat*
+FAIL: /{*} -> Missing parameter name at index 3: /{*}
+OK: /{*splat}
