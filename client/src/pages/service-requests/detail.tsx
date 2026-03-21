@@ -45,6 +45,10 @@ import { useUpload } from "@/hooks/use-upload";
 import { CameraCapture } from "@/components/camera-capture";
 import { formatCurrency } from "@/lib/utils";
 import { SignaturePad } from "@/components/signature-pad";
+import { FeedbackPDF } from "../../components/pdf/feedback-pdf";
+import { JobCardPDF } from "../../components/pdf/job-card-pdf";
+// @ts-ignore
+import html2pdf from "html2pdf.js";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
@@ -274,7 +278,7 @@ export default function ServiceRequestDetail() {
           <JobCardSection requestId={requestId} request={request} role={role} />
 
           {/* Customer Feedback */}
-          <FeedbackSection requestId={requestId} role={role} />
+          <FeedbackSection request={request} role={role} />
 
           {/* Digital Signatures */}
           <SignatureSection requestId={requestId} role={role} />
@@ -1610,9 +1614,14 @@ function AadhaarSection({ requestId }: { requestId: number }) {
 // ── Digital Job Card Section ──────────────────────────────────────────────
 function JobCardSection({ requestId, request, role }: { requestId: number; request: any; role: string }) {
   const { data: jobCard } = useJobCard(requestId);
+  const { data: sigs } = useSignatures(requestId);
   const upsertMutation = useUpsertJobCard();
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState<any>({});
+  const pdfRef = useRef<HTMLDivElement>(null);
+
+  const customerSig = sigs?.find((s: any) => s.type === "customer");
+  const engineerSig = sigs?.find((s: any) => s.type === "engineer");
 
   const startEditing = () => {
     setForm({
@@ -1675,17 +1684,37 @@ function JobCardSection({ requestId, request, role }: { requestId: number; reque
     </div>
   );
 
+  const handleExportPDF = () => {
+    if (!pdfRef.current) return;
+    const element = pdfRef.current;
+    const opt = {
+      margin: 0,
+      filename: `JobCard_REQ${requestId}.pdf`,
+      image: { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
+    };
+    html2pdf().set(opt as any).from(element).save();
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2">
           <FileText className="h-4 w-4 text-emerald-600" /> Digital Job Card
         </CardTitle>
-        {(role === 'engineer' || role === 'admin') && !isEditing && (
-          <Button variant="ghost" size="sm" onClick={startEditing}>
-            <Pencil className="h-3.5 w-3.5 mr-1" /> {jobCard ? "Edit" : "Fill"}
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {(role === 'engineer' || role === 'admin') && !isEditing && (
+            <Button variant="ghost" size="sm" onClick={startEditing}>
+              <Pencil className="h-3.5 w-3.5 mr-1" /> {jobCard ? "Edit" : "Fill"}
+            </Button>
+          )}
+          {jobCard && (
+            <Button variant="outline" size="sm" onClick={handleExportPDF}>
+              <Download className="h-3.5 w-3.5 mr-1" /> PDF Export
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {!jobCard && !isEditing ? (
@@ -1750,18 +1779,33 @@ function JobCardSection({ requestId, request, role }: { requestId: number; reque
             )}
           </div>
         )}
+
+        {/* Hidden PDF Canvas Target */}
+        <div style={{ position: "absolute", left: "-9999px", top: 0 }}>
+          <JobCardPDF 
+            ref={pdfRef} 
+            request={request} 
+            jobCard={jobCard} 
+            customerSignature={customerSig?.signatureData}
+            engineerSignature={engineerSig?.signatureData}
+          />
+        </div>
       </CardContent>
     </Card>
   );
 }
 
 // ── Customer Feedback Section ─────────────────────────────────────────────
-function FeedbackSection({ requestId, role }: { requestId: number; role: string }) {
-  const { data: feedback } = useFeedbackForm(requestId);
+function FeedbackSection({ request, role }: { request: any; role: string }) {
+  const { data: feedback } = useFeedbackForm(request.id);
+  const { data: sigs } = useSignatures(request.id);
   const upsertMutation = useUpsertFeedbackForm();
   const [isEditing, setIsEditing] = useState(false);
   const [rating, setRating] = useState(0);
   const [remarks, setRemarks] = useState("");
+  const pdfRef = useRef<HTMLDivElement>(null);
+
+  const customerSig = sigs?.find((s: any) => s.type === "customer");
 
   const startEditing = () => {
     setRating(feedback?.rating || 0);
@@ -1771,9 +1815,22 @@ function FeedbackSection({ requestId, role }: { requestId: number; role: string 
 
   const handleSave = () => {
     if (rating < 1) return;
-    upsertMutation.mutate({ id: requestId, rating, remarks }, {
+    upsertMutation.mutate({ id: request.id, rating, remarks }, {
       onSuccess: () => setIsEditing(false),
     });
+  };
+
+  const handleExportPDF = () => {
+    if (!pdfRef.current) return;
+    const element = pdfRef.current;
+    const opt = {
+      margin: 0,
+      filename: `Feedback_REQ${request.id}.pdf`,
+      image: { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
+    };
+    html2pdf().set(opt as any).from(element).save();
   };
 
   return (
@@ -1782,11 +1839,18 @@ function FeedbackSection({ requestId, role }: { requestId: number; role: string 
         <CardTitle className="flex items-center gap-2">
           <Star className="h-4 w-4 text-amber-500" /> Customer Feedback
         </CardTitle>
-        {(role === 'engineer' || role === 'admin') && !isEditing && (
-          <Button variant="ghost" size="sm" onClick={startEditing}>
-            <Pencil className="h-3.5 w-3.5 mr-1" /> {feedback ? "Edit" : "Fill"}
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {(role === 'engineer' || role === 'admin') && !isEditing && (
+            <Button variant="ghost" size="sm" onClick={startEditing}>
+              <Pencil className="h-3.5 w-3.5 mr-1" /> {feedback ? "Edit" : "Fill"}
+            </Button>
+          )}
+          {feedback && (
+            <Button variant="outline" size="sm" onClick={handleExportPDF}>
+              <Download className="h-3.5 w-3.5 mr-1" /> PDF Export
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {!feedback && !isEditing ? (
@@ -1840,6 +1904,16 @@ function FeedbackSection({ requestId, role }: { requestId: number; role: string 
             {feedback?.locked && <Badge variant="outline" className="text-xs">🔒 Locked</Badge>}
           </div>
         )}
+        
+        {/* Hidden PDF Canvas Target */}
+        <div style={{ position: "absolute", left: "-9999px", top: 0 }}>
+          <FeedbackPDF 
+            ref={pdfRef} 
+            request={request} 
+            feedback={feedback} 
+            customerSignature={customerSig?.signatureData} 
+          />
+        </div>
       </CardContent>
     </Card>
   );
