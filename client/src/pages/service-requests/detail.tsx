@@ -4,6 +4,7 @@ import {
   useUpdateServiceRequest,
   useConsumePart,
   useUploadServiceImage,
+  useDeleteServiceImage,
   useUploadDocument,
   useAssignEngineer,
   useSubmitInvoice,
@@ -723,8 +724,15 @@ function ImageUploadButtons({ type, requestId }: { type: 'before' | 'after', req
   );
 }
 
-function ImagePreviewCard({ img, label }: { img: any, label: string }) {
+function ImagePreviewCard({ img, label, requestId, canDelete }: { img: any, label: string; requestId: number; canDelete: boolean }) {
   const [previewOpen, setPreviewOpen] = useState(false);
+  const deleteMutation = useDeleteServiceImage();
+
+  const handleDelete = () => {
+    if (confirm("Are you sure you want to delete this image?")) {
+      deleteMutation.mutate({ requestId, imageId: img.id });
+    }
+  };
 
   return (
     <>
@@ -743,17 +751,30 @@ function ImagePreviewCard({ img, label }: { img: any, label: string }) {
             <ZoomIn className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full"
-          asChild
-          data-testid={`button-download-image-${img.id}`}
-        >
-          <a href={img.fileUrl} target="_blank" rel="noopener noreferrer" download={`${label}-${img.id}.jpg`}>
-            <Download className="h-3.5 w-3.5 mr-1" /> Download
-          </a>
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1"
+            asChild
+            data-testid={`button-download-image-${img.id}`}
+          >
+            <a href={img.fileUrl} target="_blank" rel="noopener noreferrer" download={`${label}-${img.id}.jpg`}>
+              <Download className="h-3.5 w-3.5 mr-1" /> Download
+            </a>
+          </Button>
+          {canDelete && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDelete}
+              disabled={deleteMutation.isPending}
+              data-testid={`button-delete-image-${img.id}`}
+            >
+              {deleteMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            </Button>
+          )}
+        </div>
       </div>
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
@@ -800,7 +821,7 @@ function ServiceImagesSection({ requestId, canUpload, images }: { requestId: num
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {beforeImages.map(img => (
-              <ImagePreviewCard key={img.id} img={img} label="Before Service" />
+              <ImagePreviewCard key={img.id} img={img} label="Before Service" requestId={requestId} canDelete={canUpload} />
             ))}
             {beforeImages.length === 0 && (
               <div className="col-span-full h-32 bg-muted rounded-md flex items-center justify-center text-sm text-muted-foreground">
@@ -819,7 +840,7 @@ function ServiceImagesSection({ requestId, canUpload, images }: { requestId: num
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {afterImages.map(img => (
-              <ImagePreviewCard key={img.id} img={img} label="After Service" />
+              <ImagePreviewCard key={img.id} img={img} label="After Service" requestId={requestId} canDelete={canUpload} />
             ))}
             {afterImages.length === 0 && (
               <div className="col-span-full h-32 bg-muted rounded-md flex items-center justify-center text-sm text-muted-foreground">

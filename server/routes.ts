@@ -194,6 +194,15 @@ export async function registerRoutes(app: Express) {
     res.status(201).json(image);
   });
 
+  app.delete("/api/service-requests/:id/images/:imageId", jwtAuth, async (req: Request, res: Response) => {
+    try {
+      await storage.deleteImage(Number(req.params.imageId));
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ── Parts Consumed ───────────────────────────────────────────────────────
   app.post("/api/service-requests/:id/parts", jwtAuth, async (req: Request, res: Response) => {
     try {
@@ -607,6 +616,4 @@ export async function registerRoutes(app: Express) {
     }
   });
 
-  // Serve uploaded files
-  app.use("/uploads", (await import("express")).default.static(uploadsDir));
 }

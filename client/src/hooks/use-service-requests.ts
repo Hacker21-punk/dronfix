@@ -136,6 +136,30 @@ export function useUploadServiceImage() {
   });
 }
 
+export function useDeleteServiceImage() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ requestId, imageId }: { requestId: number; imageId: number }) => {
+      const res = await fetch(`/api/service-requests/${requestId}/images/${imageId}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error("Failed to delete image");
+      return res?.status === 204 ? null : await res.json().catch(() => null);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.serviceRequests.get.path, variables.requestId] });
+      toast({ title: "Success", description: "Image deleted" });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
 export function useUploadDocument() {
   const queryClient = useQueryClient();
   const { toast } = useToast();

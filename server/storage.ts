@@ -59,6 +59,7 @@ export interface IStorage {
 
   // Images
   addImage(serviceRequestId: number, type: string, fileUrl: string, geoData?: { latitude?: string; longitude?: string; capturedAt?: string }): Promise<any>;
+  deleteImage(id: number): Promise<void>;
 
   // Expenses
   getExpenses(serviceRequestId: number): Promise<any[]>;
@@ -370,6 +371,10 @@ export class DatabaseStorage implements IStorage {
       capturedAt: geoData?.capturedAt ? new Date(geoData.capturedAt) : null,
     }).returning();
     return image;
+  }
+
+  async deleteImage(imageId: number) {
+    await db.delete(images).where(eq(images.id, imageId));
   }
 
   // ── Expenses ───────────────────────────────────────────────────────────────
