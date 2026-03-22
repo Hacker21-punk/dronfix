@@ -341,6 +341,58 @@ export async function registerRoutes(app: Express) {
     res.json(v || { verified: false });
   });
 
+  // ── Secure Service Completion ─────────────────────────────────────────────
+  app.post("/api/service-requests/:id/complete-secure", jwtAuth, requireRole("engineer"), async (req: Request, res: Response) => {
+    try {
+      const serviceRequestId = Number(req.params.id);
+      const { aadhaarMasked, signatureData, assistedSignature, geoPhotoData, latitude, longitude } = req.body;
+
+      // Validate all mandatory fields
+      if (!aadhaarMasked) return res.status(400).json({ message: "Aadhaar verification is mandatory" });
+      if (!signatureData) return res.status(400).json({ message: "Customer signature is mandatory" });
+      if (!geoPhotoData) return res.status(400).json({ message: "Geo-tagged customer photo is mandatory" });
+      if (!latitude || !longitude) return res.status(400).json({ message: "GPS coordinates are mandatory" });
+
+      // Ensure service request is in_progress
+      const sr = await storage.getServiceRequestWithDetails(serviceRequestId);
+      if (!sr) return res.status(404).json({ message: "Service request not found" });
+      if (sr.status !== "in_progress") {
+        return res.status(400).json({ message: "Service request must be in_progress to complete" });
+      }
+
+      // Check if already completed
+      const existing = await storage.getServiceCompletion(serviceRequestId);
+      if (existing) return res.status(400).json({ message: "Service already completed with secure closure" });
+
+      // Create the secure completion record
+      const completion = await storage.createServiceCompletion(serviceRequestId, {
+        aadhaarMasked,
+        signatureData,
+        assistedSignature: assistedSignature || false,
+        geoPhotoData,
+        latitude: String(latitude),
+        longitude: String(longitude),
+        photoTimestamp: new Date().toISOString(),
+      });
+
+      // Mark the service request as completed
+      await storage.updateServiceRequest(serviceRequestId, {
+        status: "completed",
+      });
+
+      console.log(`[Secure Completion] Service Request #${serviceRequestId} completed with full verification.`);
+      res.json({ success: true, completion });
+    } catch (err: any) {
+      console.error("[Secure Completion Error]", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/service-requests/:id/service-completion", jwtAuth, async (req: Request, res: Response) => {
+    const completion = await storage.getServiceCompletion(Number(req.params.id));
+    res.json(completion || null);
+  });
+
   // ── Job Cards ───────────────────────────────────────────────────────────
   app.get("/api/service-requests/:id/job-card", jwtAuth, async (req: Request, res: Response) => {
     const card = await storage.getJobCard(Number(req.params.id));

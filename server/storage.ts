@@ -15,6 +15,7 @@ import {
   feedbackForms,
   signatures,
   editLogs,
+  serviceCompletions,
   type InsertInventory,
   type InsertServiceRequest,
   type InsertExpense,
@@ -99,6 +100,10 @@ export interface IStorage {
   // Edit Logs
   addEditLog(data: { entityType: string; entityId: number; field: string; oldValue?: string; newValue?: string; editedBy?: string }): Promise<any>;
   getEditLogs(entityType: string, entityId: number): Promise<any[]>;
+
+  // Service Completions
+  createServiceCompletion(serviceRequestId: number, data: any): Promise<any>;
+  getServiceCompletion(serviceRequestId: number): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -664,6 +669,31 @@ export class DatabaseStorage implements IStorage {
         eq(editLogs.entityId, entityId)
       ))
       .orderBy(desc(editLogs.createdAt));
+  }
+
+  // ── Service Completions ───────────────────────────────────────────────────────
+  async createServiceCompletion(serviceRequestId: number, data: any) {
+    const [row] = await db.insert(serviceCompletions).values({
+      serviceRequestId,
+      aadhaarMasked: data.aadhaarMasked,
+      aadhaarVerified: true,
+      verifiedAt: new Date(),
+      signatureData: data.signatureData,
+      assistedSignature: data.assistedSignature || false,
+      geoPhotoData: data.geoPhotoData,
+      latitude: data.latitude,
+      longitude: data.longitude,
+      photoTimestamp: data.photoTimestamp ? new Date(data.photoTimestamp) : new Date(),
+      locked: true,
+    }).returning();
+    return row;
+  }
+
+  async getServiceCompletion(serviceRequestId: number) {
+    const [row] = await db.select().from(serviceCompletions)
+      .where(eq(serviceCompletions.serviceRequestId, serviceRequestId))
+      .limit(1);
+    return row || null;
   }
 }
 

@@ -214,6 +214,23 @@ export const editLogs = pgTable("edit_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// ─── 15. SERVICE COMPLETIONS (Secure Closure) ────────────────────────────────
+export const serviceCompletions = pgTable("service_completions", {
+  id: serial("id").primaryKey(),
+  serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
+  aadhaarMasked: text("aadhaar_masked").notNull(),
+  aadhaarVerified: boolean("aadhaar_verified").notNull().default(false),
+  verifiedAt: timestamp("verified_at"),
+  signatureData: text("signature_data").notNull(), // base64 data URL
+  assistedSignature: boolean("assisted_signature").notNull().default(false),
+  geoPhotoData: text("geo_photo_data").notNull(), // base64 data URL
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  photoTimestamp: timestamp("photo_timestamp"),
+  locked: boolean("locked").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // ─── Relations ───────────────────────────────────────────────────────────────
 export const serviceRequestsRelations = relations(serviceRequests, ({ one, many }) => ({
   assignedEngineer: one(users, {
@@ -231,6 +248,7 @@ export const serviceRequestsRelations = relations(serviceRequests, ({ one, many 
   jobCards: many(jobCards),
   feedbackForms: many(feedbackForms),
   signatures: many(signatures),
+  serviceCompletions: many(serviceCompletions),
 }));
 
 export const partsRequestedRelations = relations(partsRequested, ({ one }) => ({
@@ -329,6 +347,13 @@ export const editLogsRelations = relations(editLogs, ({ one }) => ({
   }),
 }));
 
+export const serviceCompletionsRelations = relations(serviceCompletions, ({ one }) => ({
+  serviceRequest: one(serviceRequests, {
+    fields: [serviceCompletions.serviceRequestId],
+    references: [serviceRequests.id],
+  }),
+}));
+
 // ─── Insert Schemas ──────────────────────────────────────────────────────────
 export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true, updatedAt: true });
 export const insertServiceRequestSchema = createInsertSchema(serviceRequests).omit({
@@ -348,6 +373,7 @@ export const insertJobCardSchema = createInsertSchema(jobCards).omit({ id: true,
 export const insertFeedbackFormSchema = createInsertSchema(feedbackForms).omit({ id: true, createdAt: true });
 export const insertSignatureSchema = createInsertSchema(signatures).omit({ id: true, createdAt: true });
 export const insertAadhaarVerificationSchema = createInsertSchema(aadhaarVerifications).omit({ id: true, createdAt: true });
+export const insertServiceCompletionSchema = createInsertSchema(serviceCompletions).omit({ id: true, createdAt: true });
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 export type Inventory = typeof inventory.$inferSelect;
@@ -369,6 +395,8 @@ export type FeedbackForm = typeof feedbackForms.$inferSelect;
 export type InsertFeedbackForm = z.infer<typeof insertFeedbackFormSchema>;
 export type Signature = typeof signatures.$inferSelect;
 export type EditLog = typeof editLogs.$inferSelect;
+export type ServiceCompletion = typeof serviceCompletions.$inferSelect;
+export type InsertServiceCompletion = z.infer<typeof insertServiceCompletionSchema>;
 
 export type UpdateServiceRequest = Partial<InsertServiceRequest> & {
   status?: typeof serviceStatusEnum.enumValues[number];

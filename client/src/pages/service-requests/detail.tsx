@@ -46,6 +46,7 @@ import { useUpload } from "@/hooks/use-upload";
 import { CameraCapture } from "@/components/camera-capture";
 import { formatCurrency } from "@/lib/utils";
 import { SignaturePad } from "@/components/signature-pad";
+import { ServiceCompletionModal } from "@/components/service-completion-modal";
 import { FeedbackPDF } from "../../components/pdf/feedback-pdf";
 import { JobCardPDF } from "../../components/pdf/job-card-pdf";
 // @ts-ignore
@@ -66,6 +67,7 @@ export default function ServiceRequestDetail() {
   const { data: profile } = useCurrentUser();
   const updateMutation = useUpdateServiceRequest();
   const uploadDocumentMutation = useUploadDocument();
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
   
   if (isLoading || !request) {
     return <div className="p-10 text-center animate-pulse">Loading request details...</div>;
@@ -102,12 +104,21 @@ export default function ServiceRequestDetail() {
           )}
 
           {role === 'engineer' && request.status === 'in_progress' && (
-            <Button onClick={() => updateMutation.mutate({ id: requestId, status: 'completed' })}>
+            <Button onClick={() => setShowCompletionModal(true)}>
               Complete Service
             </Button>
           )}
         </div>
       </div>
+
+      {/* Secure Service Completion Modal */}
+      {role === 'engineer' && request.status === 'in_progress' && (
+        <ServiceCompletionModal
+          open={showCompletionModal}
+          onOpenChange={setShowCompletionModal}
+          requestId={requestId}
+        />
+      )}
 
       {/* Progress Stepper */}
       <div className="relative">

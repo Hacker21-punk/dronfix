@@ -470,3 +470,41 @@ export function useUpsertSignature() {
     },
   });
 }
+
+// ── Secure Service Completion Hooks ───────────────────────────────────────
+export function useServiceCompletion(serviceRequestId: number) {
+  return useQuery({
+    queryKey: ['/api/service-requests', serviceRequestId, 'service-completion'],
+    queryFn: async () => {
+      const res = await fetch(`/api/service-requests/${serviceRequestId}/service-completion`, {
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error("Failed to fetch service completion");
+      return res.json();
+    },
+    enabled: !!serviceRequestId,
+  });
+}
+
+export function useSecureComplete() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: number; aadhaarMasked: string; signatureData: string; assistedSignature: boolean; geoPhotoData: string; latitude: number; longitude: number }) => {
+      const res = await apiRequest("POST", `/api/service-requests/${id}/complete-secure`, data);
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/service-requests', variables.id, 'service-completion'] });
+      queryClient.invalidateQueries({ queryKey: [api.serviceRequests.get.path, variables.id] });
+      queryClient.invalidateQueries({ queryKey: [api.serviceRequests.list.path] });
+      toast({ title: "Service Completed", description: "Service has been securely completed with full verification." });
+    },
+    onError: (err) => {
+      toast({ title: "Completion Failed", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
