@@ -1,4 +1,4 @@
-import type { Express, Request, Response, NextFunction } from "express";
+import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import { storage } from "./storage";
 import { verifyToken, hashPassword, comparePassword, generateToken } from "./auth";
 import multer from "multer";
@@ -42,6 +42,9 @@ function requireRole(...roles: string[]) {
 }
 
 export async function registerRoutes(app: Express) {
+  // Serve uploaded files
+  app.use("/uploads", express.static(uploadsDir));
+
   // ── Auth ─────────────────────────────────────────────────────────────────
   app.post("/api/auth/login", async (req: Request, res: Response) => {
     try {
