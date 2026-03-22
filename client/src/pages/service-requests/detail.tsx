@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Calendar, CheckCircle, Upload, Wrench, Download, Camera, User, FileText, ArrowLeft, FolderOpen, Loader2, ZoomIn, X, Truck, Receipt, Plus, Trash2, IndianRupee, Pencil, Shield, Star, PenTool
 } from "lucide-react";
@@ -1539,9 +1540,10 @@ function AadhaarSection({ requestId }: { requestId: number }) {
   const [aadhaarNumber, setAadhaarNumber] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const [consent, setConsent] = useState(false);
 
   const handleSendOtp = () => {
-    sendOtpMutation.mutate({ id: requestId, aadhaarNumber }, {
+    sendOtpMutation.mutate({ id: requestId, aadhaarNumber, consent }, {
       onSuccess: () => setOtpSent(true),
     });
   };
@@ -1573,14 +1575,28 @@ function AadhaarSection({ requestId }: { requestId: number }) {
               <Label htmlFor="aadhaar">Aadhaar Number</Label>
               <Input
                 id="aadhaar"
+                type="password"
                 placeholder="Enter 12-digit Aadhaar"
                 value={aadhaarNumber}
                 onChange={(e) => setAadhaarNumber(e.target.value.replace(/\D/g, "").slice(0, 12))}
                 maxLength={12}
               />
             </div>
-            <Button onClick={handleSendOtp} disabled={aadhaarNumber.length !== 12 || sendOtpMutation.isPending} className="w-full">
-              {sendOtpMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Sending...</> : "Send OTP"}
+            
+            <div className="flex items-start space-x-2 pt-2 pb-2">
+              <Checkbox id="consent" checked={consent} onCheckedChange={(c) => setConsent(c as boolean)} />
+              <div className="grid gap-1.5 leading-none">
+                <label
+                  htmlFor="consent"
+                  className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  I explicitly consent to providing my Aadhaar details for identity verification purposes via Karza verification API.
+                </label>
+              </div>
+            </div>
+
+            <Button onClick={handleSendOtp} disabled={aadhaarNumber.length !== 12 || !consent || sendOtpMutation.isPending} className="w-full">
+              {sendOtpMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Sending...</> : "Verify Identity (Send OTP)"}
             </Button>
           </div>
         ) : (

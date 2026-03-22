@@ -12,61 +12,112 @@ import crypto from "crypto";
  */
 
 export interface AadhaarProvider {
-  sendOtp(aadhaarNumber: string): Promise<{ success: boolean; message: string; otpHash: string; expiresAt: Date }>;
-  verifyOtp(otpHash: string, otp: string): Promise<{ success: boolean; message: string }>;
+  /**
+   * @param aadhaarNumber - The raw 12-digit aadhaar
+   * @param consent - Strict compliance consent given in UI
+   * @returns providerTransactionId and expiry instead of raw OTPs (handled by provider)
+   */
+  sendOtp(aadhaarNumber: string, consent: boolean): Promise<{ success: boolean; message: string; providerTransactionId: string; expiresAt: Date }>;
+  verifyOtp(providerTransactionId: string, otp: string): Promise<{ success: boolean; message: string }>;
 }
 
-// ─── Mock Provider (default for development) ─────────────────────────────────
-class MockAadhaarProvider implements AadhaarProvider {
-  private otpStore: Map<string, { otp: string; expiresAt: Date }> = new Map();
+// ─── Real Provider Implementation (Karza / Production) ───────────────────────
+class KarzaAadhaarProvider implements AadhaarProvider {
+  private KARZA_URL = "https://testapi.karza.in/v3/aadhaar-consent";
+  
+  async sendOtp(aadhaarNumber: string, consent: boolean): Promise<{ success: boolean; message: string; providerTransactionId: string; expiresAt: Date }> {
+    if (!consent) {
+      throw new Error("User consent is strictly required for Aadhaar verification");
+    }
 
-  async sendOtp(aadhaarNumber: string): Promise<{ success: boolean; message: string; otpHash: string; expiresAt: Date }> {
-    // Generate a 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 3 * 60 * 1000); // 3 minutes
+    const apiKey = process.env.KARZA_API_KEY;
+    
+    // Strict fallback rule: Do NOT bypass verification if provider API fails (Missing KEY).
+    if (!apiKey) {
+      console.error("[CRITICAL] Karza API Key is absolutely missing! Rejecting Aadhaar send OTP request.");
+      throw new Error("Provider API Configuration Failed: Please contact system administrator.");
+    }
 
-    // Hash the OTP for storage
-    const otpHash = crypto.createHash("sha256").update(otp + aadhaarNumber).digest("hex");
+    try {
+      // Production API signature for Karza Send OTP
+      const response = await fetch(`${this.KARZA_URL}/otp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-karza-key": apiKey
+        },
+        body: JSON.stringify({
+          aadhaarNo: aadhaarNumber,
+          consent: "Y"
+        })
+      });
 
-    // Store internally for verification
-    this.otpStore.set(otpHash, { otp, expiresAt });
+      if (!response.ok) {
+        throw new Error(`Provider API Failed with status ${response.status}`);
+      }
 
-    console.log(`[Mock Aadhaar] OTP for ${maskAadhaar(aadhaarNumber)}: ${otp}`);
+      const data = await response.json();
+      
+      if (data.statusCode !== 101) {
+        throw new Error(data.statusMessage || "Failed to trigger OTP from provider");
+      }
 
-    return {
-      success: true,
-      message: `OTP sent successfully (Mock: ${otp})`,
-      otpHash,
-      expiresAt,
-    };
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // Usually Karza OTPs are valid for 10 mins
+
+      console.log(`[Karza Aadhaar] OTP sent successfully for ${maskAadhaar(aadhaarNumber)}. Transaction ID: ${data.clientData.caseFormNo}`);
+
+      return {
+        success: true,
+        message: "OTP sent successfully via Karza API",
+        providerTransactionId: data.clientData.caseFormNo, // Return the explicit provider ID
+        expiresAt,
+      };
+    } catch (error: any) {
+      console.error("[Aadhaar Provider Error] Send OTP Failed:", error.message);
+      throw new Error("Aadhaar Provider API Failed: " + error.message);
+    }
   }
 
-  async verifyOtp(otpHash: string, otp: string): Promise<{ success: boolean; message: string }> {
-    const stored = this.otpStore.get(otpHash);
-
-    if (!stored) {
-      return { success: false, message: "Invalid or expired OTP session" };
+  async verifyOtp(providerTransactionId: string, otp: string): Promise<{ success: boolean; message: string }> {
+    const apiKey = process.env.KARZA_API_KEY;
+    
+    if (!apiKey) {
+      console.error("[CRITICAL] Karza API Key is absolutely missing! Rejecting Aadhaar verify request.");
+      throw new Error("Provider API Configuration Failed: Please contact system administrator.");
     }
 
-    if (new Date() > stored.expiresAt) {
-      this.otpStore.delete(otpHash);
-      return { success: false, message: "OTP has expired" };
-    }
+    try {
+      // Production API signature for Karza Verify OTP
+      const response = await fetch(`${this.KARZA_URL}/submit-otp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-karza-key": apiKey
+        },
+        body: JSON.stringify({
+          otp: otp,
+          accessKey: providerTransactionId, // Karza usually takes the accessKey back
+          consent: "Y"
+        })
+      });
 
-    if (stored.otp !== otp) {
-      return { success: false, message: "Incorrect OTP" };
-    }
+      if (!response.ok) {
+        throw new Error(`Provider API Failed with status ${response.status}`);
+      }
 
-    this.otpStore.delete(otpHash);
-    return { success: true, message: "Aadhaar verified successfully" };
+      const data = await response.json();
+      
+      if (data.statusCode !== 101) {
+        return { success: false, message: data.statusMessage || "Incorrect OTP or Server Error" };
+      }
+
+      return { success: true, message: "Aadhaar verified successfully via Karza API" };
+    } catch (error: any) {
+      console.error("[Aadhaar Provider Error] Verify OTP Failed:", error.message);
+      return { success: false, message: "Aadhaar Provider API Failed: " + error.message };
+    }
   }
 }
-
-// ─── Future Provider Template ────────────────────────────────────────────────
-// class SignzyProvider implements AadhaarProvider {
-//   async sendOtp(aadhaarNumber: string) { /* Call Signzy API */ }
-//   async verifyOtp(otpHash: string, otp: string) { /* Verify via Signzy */ }
-// }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 export function maskAadhaar(aadhaar: string): string {
@@ -81,12 +132,12 @@ export function validateAadhaar(aadhaar: string): boolean {
 }
 
 // ─── Active Provider ─────────────────────────────────────────────────────────
-// Change this to switch providers without touching frontend or controllers
-const activeProvider: AadhaarProvider = new MockAadhaarProvider();
+// Bound explicitly to the PRODUCTION provider (Karza) to prevent mock bypass.
+const activeProvider: AadhaarProvider = new KarzaAadhaarProvider();
 
 export const aadhaarService = {
-  sendOtp: (aadhaar: string) => activeProvider.sendOtp(aadhaar),
-  verifyOtp: (otpHash: string, otp: string) => activeProvider.verifyOtp(otpHash, otp),
+  sendOtp: (aadhaar: string, consent: boolean) => activeProvider.sendOtp(aadhaar, consent),
+  verifyOtp: (providerTransactionId: string, otp: string) => activeProvider.verifyOtp(providerTransactionId, otp),
   maskAadhaar,
   validateAadhaar,
 };

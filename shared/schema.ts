@@ -140,7 +140,10 @@ export const aadhaarVerifications = pgTable("aadhaar_verifications", {
   id: serial("id").primaryKey(),
   serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
   maskedAadhaar: text("masked_aadhaar").notNull(), // XXXX-XXXX-1234
-  otpHash: text("otp_hash"),
+  otpHash: text("otp_hash"), // Used for fallback or mocked routing (if re-enabled)
+  providerTransactionId: text("provider_transaction_id"), // Real API transaction ID mapping
+  consentGiven: boolean("consent_given").notNull().default(false),
+  consentTimestamp: timestamp("consent_timestamp"),
   otpExpiresAt: timestamp("otp_expires_at"),
   retryCount: integer("retry_count").notNull().default(0),
   verified: boolean("verified").notNull().default(false),

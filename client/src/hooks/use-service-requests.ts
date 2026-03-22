@@ -325,8 +325,8 @@ export function useSendAadhaarOtp() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, aadhaarNumber }: { id: number; aadhaarNumber: string }) => {
-      const res = await apiRequest("POST", `/api/service-requests/${id}/aadhaar/send-otp`, { aadhaarNumber });
+    mutationFn: async ({ id, aadhaarNumber, consent }: { id: number; aadhaarNumber: string; consent: boolean }) => {
+      const res = await apiRequest("POST", `/api/service-requests/${id}/aadhaar/send-otp`, { aadhaarNumber, consent });
       return res.json();
     },
     onSuccess: (data, variables) => {

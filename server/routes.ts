@@ -258,13 +258,17 @@ export async function registerRoutes(app: Express) {
   // ── Aadhaar OTP Verification ────────────────────────────────────────────
   app.post("/api/service-requests/:id/aadhaar/send-otp", jwtAuth, async (req: Request, res: Response) => {
     try {
-      const { aadhaarNumber } = req.body;
+      const { aadhaarNumber, consent } = req.body;
       const serviceRequestId = Number(req.params.id);
+
+      if (consent !== true) {
+        return res.status(400).json({ message: "Explicit user consent is mandatory for Aadhaar verification" });
+      }
 
       const { aadhaarService } = await import("./services/aadhaar");
 
       if (!aadhaarService.validateAadhaar(aadhaarNumber)) {
-        return res.status(400).json({ message: "Invalid Aadhaar number" });
+        return res.status(400).json({ message: "Invalid Aadhaar number format" });
       }
 
       // Check existing verification
@@ -276,20 +280,24 @@ export async function registerRoutes(app: Express) {
         return res.status(429).json({ message: "Maximum OTP retries exceeded" });
       }
 
-      const result = await aadhaarService.sendOtp(aadhaarNumber);
+      const result = await aadhaarService.sendOtp(aadhaarNumber, consent);
       const maskedAadhaar = aadhaarService.maskAadhaar(aadhaarNumber);
 
       if (existing) {
         await storage.updateAadhaarVerification(existing.id, {
           maskedAadhaar,
-          otpHash: result.otpHash,
+          providerTransactionId: result.providerTransactionId,
+          consentGiven: true,
+          consentTimestamp: new Date(),
           otpExpiresAt: result.expiresAt,
           retryCount: (existing.retryCount || 0) + 1,
         });
       } else {
         await storage.createAadhaarVerification(serviceRequestId, {
           maskedAadhaar,
-          otpHash: result.otpHash,
+          providerTransactionId: result.providerTransactionId,
+          consentGiven: true,
+          consentTimestamp: new Date(),
           otpExpiresAt: result.expiresAt,
         });
       }
@@ -310,8 +318,9 @@ export async function registerRoutes(app: Express) {
       const verification = await storage.getAadhaarVerification(serviceRequestId);
       if (!verification) return res.status(404).json({ message: "No OTP session found" });
       if (verification.locked) return res.status(400).json({ message: "Already verified and locked" });
+      if (!verification.providerTransactionId) return res.status(400).json({ message: "Invalid provider transaction state" });
 
-      const result = await aadhaarService.verifyOtp(verification.otpHash || '', otp);
+      const result = await aadhaarService.verifyOtp(verification.providerTransactionId, otp);
 
       if (result.success) {
         await storage.updateAadhaarVerification(verification.id, {
