@@ -41,7 +41,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import { useUpload } from "@/hooks/use-upload";
 import { CameraCapture } from "@/components/camera-capture";
 import { formatCurrency } from "@/lib/utils";
@@ -1669,8 +1669,8 @@ function JobCardSection({ requestId, request, role }: { requestId: number; reque
 
   const statusOptions = ["Good", "Damaged", "Missing", "N/A"];
 
-  const FieldRow = ({ label, field }: { label: string; field: string }) => (
-    <div className="space-y-1">
+  const renderFieldRow = (label: string, field: string) => (
+    <div className="space-y-1" key={field}>
       <Label className="text-xs">{label}</Label>
       {isEditing ? (
         <Select value={form[field] || ""} onValueChange={(v) => setForm((p: any) => ({ ...p, [field]: v }))}>
@@ -1685,8 +1685,8 @@ function JobCardSection({ requestId, request, role }: { requestId: number; reque
     </div>
   );
 
-  const TextRow = ({ label, field }: { label: string; field: string }) => (
-    <div className="space-y-1">
+  const renderTextRow = (label: string, field: string) => (
+    <div className="space-y-1" key={field}>
       <Label className="text-xs">{label}</Label>
       {isEditing ? (
         <Textarea
@@ -1713,6 +1713,16 @@ function JobCardSection({ requestId, request, role }: { requestId: number; reque
     html2pdf().set(opt as any).from(element).save();
   };
 
+  const pdfCanvas = useMemo(() => (
+    <JobCardPDF 
+      ref={pdfRef} 
+      request={request} 
+      jobCard={jobCard} 
+      customerSignature={customerSig?.signatureData}
+      engineerSignature={engineerSig?.signatureData}
+    />
+  ), [request, jobCard, customerSig?.signatureData, engineerSig?.signatureData]);
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -1733,6 +1743,7 @@ function JobCardSection({ requestId, request, role }: { requestId: number; reque
         </div>
       </CardHeader>
       <CardContent>
+        {/* ... (rest of the content remains exactly the same until the canvas) ... */}
         {!jobCard && !isEditing ? (
           <div className="text-center py-6 text-sm text-muted-foreground">
             <FileText className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
@@ -1762,23 +1773,23 @@ function JobCardSection({ requestId, request, role }: { requestId: number; reque
             <Separator />
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Component Checklist</p>
             <div className="grid grid-cols-2 gap-3">
-              <FieldRow label="Physical Condition" field="physicalCondition" />
-              <FieldRow label="Propeller" field="propellerStatus" />
-              <FieldRow label="Motor" field="motorStatus" />
-              <FieldRow label="Battery" field="batteryStatus" />
-              <FieldRow label="Camera/Gimbal" field="cameraGimbalStatus" />
-              <FieldRow label="GPS Module" field="gpsModule" />
-              <FieldRow label="Remote Controller" field="remoteController" />
+              {renderFieldRow("Physical Condition", "physicalCondition")}
+              {renderFieldRow("Propeller", "propellerStatus")}
+              {renderFieldRow("Motor", "motorStatus")}
+              {renderFieldRow("Battery", "batteryStatus")}
+              {renderFieldRow("Camera/Gimbal", "cameraGimbalStatus")}
+              {renderFieldRow("GPS Module", "gpsModule")}
+              {renderFieldRow("Remote Controller", "remoteController")}
             </div>
 
             <Separator />
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Diagnosis & Action</p>
-            <TextRow label="Diagnosis" field="diagnosis" />
-            <TextRow label="Root Cause" field="rootCause" />
-            <TextRow label="Action Taken" field="actionTaken" />
-            <TextRow label="Parts Replaced" field="partsReplaced" />
-            <TextRow label="Observations" field="observations" />
-            <TextRow label="Recommendations" field="recommendations" />
+            {renderTextRow("Diagnosis", "diagnosis")}
+            {renderTextRow("Root Cause", "rootCause")}
+            {renderTextRow("Action Taken", "actionTaken")}
+            {renderTextRow("Parts Replaced", "partsReplaced")}
+            {renderTextRow("Observations", "observations")}
+            {renderTextRow("Recommendations", "recommendations")}
 
             {isEditing && (
               <div className="flex gap-2 pt-2">
@@ -1798,13 +1809,7 @@ function JobCardSection({ requestId, request, role }: { requestId: number; reque
 
         {/* Hidden PDF Canvas Target */}
         <div style={{ position: "absolute", left: "-9999px", top: 0 }}>
-          <JobCardPDF 
-            ref={pdfRef} 
-            request={request} 
-            jobCard={jobCard} 
-            customerSignature={customerSig?.signatureData}
-            engineerSignature={engineerSig?.signatureData}
-          />
+          {pdfCanvas}
         </div>
       </CardContent>
     </Card>
@@ -1848,6 +1853,15 @@ function FeedbackSection({ request, role }: { request: any; role: string }) {
     };
     html2pdf().set(opt as any).from(element).save();
   };
+
+  const pdfCanvas = useMemo(() => (
+    <FeedbackPDF 
+      ref={pdfRef} 
+      request={request} 
+      feedback={feedback} 
+      customerSignature={customerSig?.signatureData} 
+    />
+  ), [request, feedback, customerSig?.signatureData]);
 
   return (
     <Card>
@@ -1923,12 +1937,7 @@ function FeedbackSection({ request, role }: { request: any; role: string }) {
         
         {/* Hidden PDF Canvas Target */}
         <div style={{ position: "absolute", left: "-9999px", top: 0 }}>
-          <FeedbackPDF 
-            ref={pdfRef} 
-            request={request} 
-            feedback={feedback} 
-            customerSignature={customerSig?.signatureData} 
-          />
+          {pdfCanvas}
         </div>
       </CardContent>
     </Card>
