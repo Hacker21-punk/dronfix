@@ -1,11 +1,10 @@
 /**
- * Seed script for materials_master and service_types
- * Run with: npx tsx server/seed-materials.ts
- * Contains FULL Customer Price List (Jan 2026)
+ * Auto-seed materials & service types on server startup.
+ * Idempotent — uses ON CONFLICT DO UPDATE so safe to run every boot.
  */
-import "dotenv/config";
 import { db } from "./db";
 import { materialsMaster, serviceTypes } from "@shared/schema";
+import { log } from "./index";
 
 interface MaterialRow {
   materialCode: string;
@@ -17,8 +16,9 @@ interface MaterialRow {
   customerSalePrice: string;
 }
 
-// ── COMPLETE Price List – Page 1 ──────────────────────────────────────────
-const materialsPage1: MaterialRow[] = [
+// Full Customer Price List (Jan 2026) — 70 parts
+const ALL_MATERIALS: MaterialRow[] = [
+  // ── Page 1 ──
   { materialCode: "17225", hsnCode: "73181500", materialDescription: "M3X6 SS AHS", gstRate: "18", customerBasicPrice: "5.76", gstAmount: "1.04", customerSalePrice: "6.79" },
   { materialCode: "17226", hsnCode: "73181600", materialDescription: "M3X8 SS AHS", gstRate: "18", customerBasicPrice: "6.38", gstAmount: "1.15", customerSalePrice: "7.53" },
   { materialCode: "17227", hsnCode: "73181600", materialDescription: "M4 Lock Nut", gstRate: "18", customerBasicPrice: "4.60", gstAmount: "0.83", customerSalePrice: "5.43" },
@@ -54,10 +54,7 @@ const materialsPage1: MaterialRow[] = [
   { materialCode: "17336", hsnCode: "85366990", materialDescription: "2 Pin Plug", gstRate: "18", customerBasicPrice: "56.52", gstAmount: "10.17", customerSalePrice: "66.69" },
   { materialCode: "17398", hsnCode: "73181600", materialDescription: "M3x60 SS AHS", gstRate: "18", customerBasicPrice: "51.68", gstAmount: "9.30", customerSalePrice: "60.98" },
   { materialCode: "17399", hsnCode: "73181500", materialDescription: "M6x80 SS AHS", gstRate: "18", customerBasicPrice: "40.72", gstAmount: "7.33", customerSalePrice: "48.04" },
-];
-
-// ── COMPLETE Price List – Page 2 ──────────────────────────────────────────
-const materialsPage2: MaterialRow[] = [
+  // ── Page 2 ──
   { materialCode: "17400", hsnCode: "73181500", materialDescription: "M4x08 SS AHS", gstRate: "18", customerBasicPrice: "5.19", gstAmount: "0.93", customerSalePrice: "6.12" },
   { materialCode: "17401", hsnCode: "73181500", materialDescription: "M4x40 SS AHS", gstRate: "18", customerBasicPrice: "10.27", gstAmount: "1.85", customerSalePrice: "12.11" },
   { materialCode: "17403", hsnCode: "73181500", materialDescription: "M3x10 SS Pan Star Screw", gstRate: "18", customerBasicPrice: "1.57", gstAmount: "0.28", customerSalePrice: "1.85" },
@@ -95,18 +92,20 @@ const materialsPage2: MaterialRow[] = [
   { materialCode: "18126", hsnCode: "40169340", materialDescription: "Rectangle Open Grommet 38mmx28mm", gstRate: "18", customerBasicPrice: "42.39", gstAmount: "7.63", customerSalePrice: "50.02" },
 ];
 
-const allMaterials = [...materialsPage1, ...materialsPage2];
+const DEFAULT_SERVICE_TYPES = ["Paid", "Warranty", "Insurance"];
 
-async function seed() {
-  console.log("[Seed] Starting materials_master seed...");
-  console.log(`[Seed] Total materials to insert: ${allMaterials.length}`);
+export async function seedMaterials() {
+  try {
+    // Check if already seeded — skip if materials exist
+    const existing = await db.select({ id: materialsMaster.id }).from(materialsMaster).limit(1);
+    if (existing.length > 0) {
+      log(`Materials already seeded (${existing.length}+ rows). Skipping.`, "seed");
+      return;
+    }
 
-  // Upsert each material by materialCode
-  for (const mat of allMaterials) {
-    await db
-      .insert(materialsMaster)
-      .values(mat)
-      .onConflictDoUpdate({
+    log(`Seeding ${ALL_MATERIALS.length} materials...`, "seed");
+    for (const mat of ALL_MATERIALS) {
+      await db.insert(materialsMaster).values(mat).onConflictDoUpdate({
         target: materialsMaster.materialCode,
         set: {
           hsnCode: mat.hsnCode,
@@ -117,24 +116,15 @@ async function seed() {
           customerSalePrice: mat.customerSalePrice,
         },
       });
+    }
+
+    for (const name of DEFAULT_SERVICE_TYPES) {
+      await db.insert(serviceTypes).values({ name }).onConflictDoNothing();
+    }
+
+    log(`Seeded ${ALL_MATERIALS.length} materials + ${DEFAULT_SERVICE_TYPES.length} service types.`, "seed");
+  } catch (err: any) {
+    // Don't crash server if seed fails — log and continue
+    log(`Materials seed warning: ${err.message}`, "seed");
   }
-
-  console.log(`[Seed] Inserted/updated ${allMaterials.length} materials.`);
-
-  // Seed default service types
-  const defaultServiceTypes = ["Paid", "Warranty", "Insurance"];
-  for (const name of defaultServiceTypes) {
-    await db
-      .insert(serviceTypes)
-      .values({ name })
-      .onConflictDoNothing();
-  }
-  console.log("[Seed] Service types seeded.");
-
-  process.exit(0);
 }
-
-seed().catch((err) => {
-  console.error("[Seed] Error:", err);
-  process.exit(1);
-});

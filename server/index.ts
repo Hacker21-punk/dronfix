@@ -86,6 +86,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 import { pool } from "./db";
+import { seedMaterials } from "./seed-materials-startup";
 
 /*
   Runtime schema migration — ensures new columns exist even if db:push failed
@@ -148,6 +149,7 @@ Start server
 
   await registerRoutes(app);
   await seedAdmin();
+  await seedMaterials();
 
   /*
   Global error handler
