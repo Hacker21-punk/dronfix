@@ -5,6 +5,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import PDFDocument from "pdfkit";
+import XLSX from "xlsx";
 
 // ── Multer for file uploads ──────────────────────────────────────────────────
 const uploadsDir = path.join(process.cwd(), "uploads");
@@ -107,6 +108,91 @@ export async function registerRoutes(app: Express) {
     res.status(204).send();
   });
 
+  // ── Materials Master (admin only) ─────────────────────────────────────────
+  app.get("/api/materials", jwtAuth, requireRole("admin"), async (_req: Request, res: Response) => {
+    res.json(await storage.getAllMaterials());
+  });
+
+  app.get("/api/materials/descriptions", jwtAuth, requireRole("admin"), async (_req: Request, res: Response) => {
+    res.json(await storage.getMaterialDescriptions());
+  });
+
+  app.get("/api/materials/by-description/:desc", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
+    const desc = decodeURIComponent(String(req.params.desc));
+    res.json(await storage.getMaterialsByDescription(desc));
+  });
+
+  app.post("/api/materials", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
+    try {
+      const material = await storage.createMaterial(req.body);
+      res.status(201).json(material);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/materials/:id", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
+    try {
+      const material = await storage.updateMaterial(Number(req.params.id), req.body);
+      res.json(material);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/materials/:id", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
+    await storage.deleteMaterial(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  app.post("/api/materials/bulk-upload", jwtAuth, requireRole("admin"), upload.single("file"), async (req: Request, res: Response) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+      const workbook = XLSX.readFile(req.file.path);
+      const sheetName = workbook.SheetNames[0];
+      const data: any[] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+      // Map spreadsheet columns to our schema
+      const materials = data.map((row: any) => ({
+        materialCode: String(row["Material"] || row["material"] || row["material_code"] || "").trim(),
+        hsnCode: String(row["HSN"] || row["hsn_code"] || row["hsn"] || "").trim() || null,
+        materialDescription: String(row["Material Description"] || row["material_description"] || row["description"] || "").trim(),
+        gstRate: String(row["GST Rate"] || row["gst_rate"] || "18").replace("%", "").trim(),
+        customerBasicPrice: String(row["Customer Basic price"] || row["customer_basic_price"] || row["basic_price"] || "0"),
+        gstAmount: String(row["GST Amount"] || row["gst_amount"] || "0"),
+        customerSalePrice: String(row["Customer Sale Price (Inc. GST)"] || row["customer_sale_price"] || row["sale_price"] || "0"),
+      })).filter((m: any) => m.materialCode && m.materialDescription);
+
+      const count = await storage.bulkUpsertMaterials(materials as any);
+      // Clean up uploaded file
+      fs.unlinkSync(req.file.path);
+      res.json({ message: `${count} materials uploaded/updated`, count });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Service Types (admin only) ────────────────────────────────────────────
+  app.get("/api/service-types", jwtAuth, async (_req: Request, res: Response) => {
+    res.json(await storage.getAllServiceTypes());
+  });
+
+  app.post("/api/service-types", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
+    try {
+      const { name } = req.body;
+      if (!name) return res.status(400).json({ message: "Name is required" });
+      const type = await storage.createServiceType(name);
+      res.status(201).json(type);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/service-types/:id", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
+    await storage.deleteServiceType(Number(req.params.id));
+    res.status(204).send();
+  });
+
   // ── Inventory (admin only) ───────────────────────────────────────────────
   app.get("/api/inventory", jwtAuth, requireRole("admin"), async (_req: Request, res: Response) => {
     res.json(await storage.getAllInventory());
@@ -125,6 +211,19 @@ export async function registerRoutes(app: Express) {
   app.delete("/api/inventory/:id", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
     await storage.deleteInventoryItem(Number(req.params.id));
     res.status(204).send();
+  });
+
+  app.patch("/api/inventory/bulk-update", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
+    try {
+      const { updates } = req.body;
+      if (!Array.isArray(updates)) return res.status(400).json({ message: "Updates array required" });
+      for (const u of updates) {
+        await storage.updateInventoryItem(u.id, { quantity: u.quantity });
+      }
+      res.json({ message: `${updates.length} items updated` });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // ── Service Requests ─────────────────────────────────────────────────────
@@ -408,40 +507,71 @@ export async function registerRoutes(app: Express) {
   // ── Job Cards ───────────────────────────────────────────────────────────
   app.get("/api/service-requests/:id/job-card", jwtAuth, async (req: Request, res: Response) => {
     const card = await storage.getJobCard(Number(req.params.id));
-    res.json(card);
+    if (card) {
+      const full = await storage.getJobCardWithItems(card.id);
+      res.json(full);
+    } else {
+      res.json(null);
+    }
   });
 
   app.put("/api/service-requests/:id/job-card", jwtAuth, async (req: Request, res: Response) => {
     try {
       const serviceRequestId = Number(req.params.id);
       const userId = (req as any).user.userId;
+      const { items, ...cardData } = req.body;
 
       const existing = await storage.getJobCard(serviceRequestId);
       if (existing?.locked) {
-        // Only engineers can edit locked cards, and we log it
         const role = (req as any).user.role;
         if (role !== "engineer") return res.status(403).json({ message: "Job card is locked" });
 
-        // Log each changed field
-        for (const key of Object.keys(req.body)) {
-          if (key !== 'locked' && (existing as any)[key] !== req.body[key]) {
+        for (const key of Object.keys(cardData)) {
+          if (key !== 'locked' && (existing as any)[key] !== cardData[key]) {
             await storage.addEditLog({
               entityType: "job_card",
               entityId: existing.id,
               field: key,
               oldValue: String((existing as any)[key] || ""),
-              newValue: String(req.body[key] || ""),
+              newValue: String(cardData[key] || ""),
               editedBy: userId,
             });
           }
         }
       }
 
+      // Auto-generate CRM ticket on first creation
+      if (!existing && !cardData.crmTicketNumber) {
+        cardData.crmTicketNumber = await storage.generateCrmTicket();
+      }
+
       const card = await storage.upsertJobCard(serviceRequestId, {
-        ...req.body,
+        ...cardData,
         filledBy: userId,
       });
-      res.json(card);
+
+      // Handle items if provided
+      if (items && Array.isArray(items) && items.length > 0) {
+        await storage.addJobCardItems(card.id, items);
+      }
+
+      // Return full card with items
+      const full = await storage.getJobCardWithItems(card.id);
+      res.json(full);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  // Add items to existing job card
+  app.post("/api/service-requests/:id/job-card/items", jwtAuth, async (req: Request, res: Response) => {
+    try {
+      const card = await storage.getJobCard(Number(req.params.id));
+      if (!card) return res.status(404).json({ message: "Job card not found" });
+      const { items } = req.body;
+      if (!items || !Array.isArray(items)) return res.status(400).json({ message: "Items array required" });
+      const created = await storage.addJobCardItems(card.id, items);
+      res.status(201).json(created);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
     }

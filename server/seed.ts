@@ -6,17 +6,13 @@ import { eq } from "drizzle-orm";
 export async function seedAdmin() {
   try {
     const existing = await db.select().from(users).where(eq(users.email, "admin@dronefix.com"));
-    if (existing.length > 0 && existing[0].password) {
-      console.log("[seed] Admin user already exists, skipping.");
-      return;
-    }
-
     const hashedPw = await hashPassword("Admin@123");
 
     if (existing.length > 0) {
+      // Always re-hash & update to ensure login works
       await db.update(users).set({ password: hashedPw, name: "Admin DroneFix", role: "admin" })
         .where(eq(users.email, "admin@dronefix.com"));
-      console.log("[seed] Updated existing admin user.");
+      console.log("[seed] Updated admin user password.");
     } else {
       await db.insert(users).values({
         name: "Admin DroneFix",

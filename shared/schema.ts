@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, decimal, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, decimal, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -12,6 +12,27 @@ export const serviceStatusEnum = pgEnum("service_status", ["pending", "open", "a
 export const shippingStatusEnum = pgEnum("shipping_status", ["shipped", "in_transit", "delivered"]);
 export const modeOfTravelEnum = pgEnum("mode_of_travel", ["Train", "Bus", "Auto", "Flight"]);
 export const documentTypeEnum = pgEnum("document_type", ["job_sheet", "feedback", "crash_report", "audit_report", "log_report"]);
+
+// ─── 0. MATERIALS MASTER (Price List) ────────────────────────────────────────
+export const materialsMaster = pgTable("materials_master", {
+  id: serial("id").primaryKey(),
+  materialCode: text("material_code").notNull().unique(),    // "17501" — the Material column
+  hsnCode: text("hsn_code"),                                  // HSN column
+  materialDescription: text("material_description").notNull(), // e.g. "Tank - L Connector (10Ltr)"
+  gstRate: decimal("gst_rate", { precision: 5, scale: 2 }).default("18"),
+  customerBasicPrice: decimal("customer_basic_price", { precision: 12, scale: 2 }).notNull(),
+  gstAmount: decimal("gst_amount", { precision: 12, scale: 2 }).notNull(),
+  customerSalePrice: decimal("customer_sale_price", { precision: 12, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ─── 0b. SERVICE TYPES ───────────────────────────────────────────────────────
+export const serviceTypes = pgTable("service_types", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),   // Paid, Warranty, Insurance
+  createdAt: timestamp("created_at").defaultNow(),
+});
 
 // ─── 1. INVENTORY ────────────────────────────────────────────────────────────
 export const inventory = pgTable("inventory", {
@@ -156,6 +177,11 @@ export const aadhaarVerifications = pgTable("aadhaar_verifications", {
 export const jobCards = pgTable("job_cards", {
   id: serial("id").primaryKey(),
   serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
+  // CRM & Classification
+  crmTicketNumber: text("crm_ticket_number").unique(), // DRN-YYYYMM-XXXXXX
+  modelDetails: text("model_details"),                  // E10, E10P, DHQ4, Others
+  serviceType: text("service_type"),                    // Paid, Warranty, Insurance
+  engineerNotes: text("engineer_notes"),
   // Customer & Drone info (pre-filled from SR)
   customerName: text("customer_name").notNull(),
   droneModel: text("drone_model"),
@@ -180,6 +206,18 @@ export const jobCards = pgTable("job_cards", {
   filledBy: text("filled_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ─── 11b. JOB CARD ITEMS (Parts Usage List) ──────────────────────────────────
+export const jobCardItems = pgTable("job_card_items", {
+  id: serial("id").primaryKey(),
+  jobCardId: integer("job_card_id").notNull().references(() => jobCards.id),
+  materialId: integer("material_id").references(() => materialsMaster.id),
+  materialDescriptionSnapshot: text("material_description_snapshot").notNull(),
+  materialCodeSnapshot: text("material_code_snapshot").notNull(),
+  quantity: integer("quantity").notNull().default(1),
+  unitPriceSnapshot: decimal("unit_price_snapshot", { precision: 12, scale: 2 }),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 // ─── 12. FEEDBACK FORMS ──────────────────────────────────────────────────────
@@ -315,7 +353,7 @@ export const aadhaarVerificationsRelations = relations(aadhaarVerifications, ({ 
   }),
 }));
 
-export const jobCardsRelations = relations(jobCards, ({ one }) => ({
+export const jobCardsRelations = relations(jobCards, ({ one, many }) => ({
   serviceRequest: one(serviceRequests, {
     fields: [jobCards.serviceRequestId],
     references: [serviceRequests.id],
@@ -323,6 +361,18 @@ export const jobCardsRelations = relations(jobCards, ({ one }) => ({
   engineer: one(users, {
     fields: [jobCards.filledBy],
     references: [users.id],
+  }),
+  items: many(jobCardItems),
+}));
+
+export const jobCardItemsRelations = relations(jobCardItems, ({ one }) => ({
+  jobCard: one(jobCards, {
+    fields: [jobCardItems.jobCardId],
+    references: [jobCards.id],
+  }),
+  material: one(materialsMaster, {
+    fields: [jobCardItems.materialId],
+    references: [materialsMaster.id],
   }),
 }));
 
@@ -369,7 +419,10 @@ export const insertImageSchema = createInsertSchema(images).omit({ id: true, cre
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, createdAt: true });
 export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true });
 export const insertLogisticsSchema = createInsertSchema(logistics).omit({ id: true });
+export const insertMaterialsMasterSchema = createInsertSchema(materialsMaster).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertServiceTypeSchema = createInsertSchema(serviceTypes).omit({ id: true, createdAt: true });
 export const insertJobCardSchema = createInsertSchema(jobCards).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertJobCardItemSchema = createInsertSchema(jobCardItems).omit({ id: true, createdAt: true });
 export const insertFeedbackFormSchema = createInsertSchema(feedbackForms).omit({ id: true, createdAt: true });
 export const insertSignatureSchema = createInsertSchema(signatures).omit({ id: true, createdAt: true });
 export const insertAadhaarVerificationSchema = createInsertSchema(aadhaarVerifications).omit({ id: true, createdAt: true });
@@ -389,8 +442,14 @@ export type InsertExpense = z.infer<typeof insertExpenseSchema>;
 export type Invoice = typeof invoices.$inferSelect;
 export type Logistics = typeof logistics.$inferSelect;
 export type AadhaarVerification = typeof aadhaarVerifications.$inferSelect;
+export type MaterialsMaster = typeof materialsMaster.$inferSelect;
+export type InsertMaterialsMaster = z.infer<typeof insertMaterialsMasterSchema>;
+export type ServiceType = typeof serviceTypes.$inferSelect;
+export type InsertServiceType = z.infer<typeof insertServiceTypeSchema>;
 export type JobCard = typeof jobCards.$inferSelect;
 export type InsertJobCard = z.infer<typeof insertJobCardSchema>;
+export type JobCardItem = typeof jobCardItems.$inferSelect;
+export type InsertJobCardItem = z.infer<typeof insertJobCardItemSchema>;
 export type FeedbackForm = typeof feedbackForms.$inferSelect;
 export type InsertFeedbackForm = z.infer<typeof insertFeedbackFormSchema>;
 export type Signature = typeof signatures.$inferSelect;

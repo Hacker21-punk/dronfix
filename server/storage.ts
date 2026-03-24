@@ -12,16 +12,21 @@ import {
   logistics,
   aadhaarVerifications,
   jobCards,
+  jobCardItems,
   feedbackForms,
   signatures,
   editLogs,
   serviceCompletions,
+  materialsMaster,
+  serviceTypes,
   type InsertInventory,
   type InsertServiceRequest,
   type InsertExpense,
   type UpdateServiceRequest,
+  type InsertMaterialsMaster,
+  type InsertServiceType,
 } from "@shared/schema";
-import { eq, sql, and, lte, desc, inArray } from "drizzle-orm";
+import { eq, sql, and, lte, desc, inArray, ilike } from "drizzle-orm";
 import { hashPassword } from "./auth";
 
 export interface IStorage {
@@ -32,6 +37,20 @@ export interface IStorage {
   getAllUsers(): Promise<any[]>;
   updateUser(id: string, data: Partial<{ name: string; email: string; role: string }>): Promise<any>;
   deleteUser(id: string): Promise<void>;
+
+  // Materials Master
+  getAllMaterials(): Promise<any[]>;
+  getMaterialDescriptions(): Promise<string[]>;
+  getMaterialsByDescription(description: string): Promise<any[]>;
+  createMaterial(data: InsertMaterialsMaster): Promise<any>;
+  updateMaterial(id: number, data: Partial<InsertMaterialsMaster>): Promise<any>;
+  deleteMaterial(id: number): Promise<void>;
+  bulkUpsertMaterials(rows: InsertMaterialsMaster[]): Promise<number>;
+
+  // Service Types
+  getAllServiceTypes(): Promise<any[]>;
+  createServiceType(name: string): Promise<any>;
+  deleteServiceType(id: number): Promise<void>;
 
   // Inventory
   getAllInventory(): Promise<any[]>;
@@ -89,6 +108,9 @@ export interface IStorage {
   // Job Cards
   getJobCard(serviceRequestId: number): Promise<any>;
   upsertJobCard(serviceRequestId: number, data: any): Promise<any>;
+  getJobCardWithItems(jobCardId: number): Promise<any>;
+  addJobCardItems(jobCardId: number, items: { materialId?: number; materialDescriptionSnapshot: string; materialCodeSnapshot: string; quantity: number; unitPriceSnapshot?: string }[]): Promise<any[]>;
+  generateCrmTicket(): Promise<string>;
 
   // Feedback Forms
   getFeedbackForm(serviceRequestId: number): Promise<any>;
@@ -151,6 +173,102 @@ export class DatabaseStorage implements IStorage {
 
   async deleteUser(id: string) {
     await db.delete(users).where(eq(users.id, id));
+  }
+
+  // ── Materials Master ──────────────────────────────────────────────────────
+  async getAllMaterials() {
+    return db.select().from(materialsMaster).orderBy(materialsMaster.materialDescription);
+  }
+
+  async getMaterialDescriptions(): Promise<string[]> {
+    const rows = await db.selectDistinct({ desc: materialsMaster.materialDescription })
+      .from(materialsMaster)
+      .orderBy(materialsMaster.materialDescription);
+    return rows.map(r => r.desc);
+  }
+
+  async getMaterialsByDescription(description: string) {
+    return db.select().from(materialsMaster)
+      .where(eq(materialsMaster.materialDescription, description));
+  }
+
+  async createMaterial(data: InsertMaterialsMaster) {
+    const [row] = await db.insert(materialsMaster).values(data).returning();
+    return row;
+  }
+
+  async updateMaterial(id: number, data: Partial<InsertMaterialsMaster>) {
+    const [row] = await db.update(materialsMaster)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(materialsMaster.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteMaterial(id: number) {
+    await db.delete(materialsMaster).where(eq(materialsMaster.id, id));
+  }
+
+  async bulkUpsertMaterials(rows: InsertMaterialsMaster[]): Promise<number> {
+    if (rows.length === 0) return 0;
+    // Insert, skip conflicts on material_code
+    let inserted = 0;
+    for (const row of rows) {
+      try {
+        await db.insert(materialsMaster).values(row).onConflictDoUpdate({
+          target: materialsMaster.materialCode,
+          set: {
+            hsnCode: row.hsnCode,
+            materialDescription: row.materialDescription,
+            gstRate: row.gstRate,
+            customerBasicPrice: row.customerBasicPrice,
+            gstAmount: row.gstAmount,
+            customerSalePrice: row.customerSalePrice,
+            updatedAt: new Date(),
+          },
+        });
+        inserted++;
+      } catch (e) {
+        // Skip individual row errors
+        console.error(`[BulkUpload] Skipping row ${row.materialCode}:`, e);
+      }
+    }
+    return inserted;
+  }
+
+  // ── Service Types ─────────────────────────────────────────────────────────
+  async getAllServiceTypes() {
+    return db.select().from(serviceTypes).orderBy(serviceTypes.name);
+  }
+
+  async createServiceType(name: string) {
+    const [row] = await db.insert(serviceTypes).values({ name }).returning();
+    return row;
+  }
+
+  async deleteServiceType(id: number) {
+    await db.delete(serviceTypes).where(eq(serviceTypes.id, id));
+  }
+
+  // ── CRM Ticket Generation ────────────────────────────────────────────────
+  async generateCrmTicket(): Promise<string> {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    let ticket: string;
+    let attempts = 0;
+    do {
+      const random = String(Math.floor(100000 + Math.random() * 900000));
+      ticket = `DRN-${year}${month}-${random}`;
+      // Check uniqueness
+      const [existing] = await db.select({ id: jobCards.id })
+        .from(jobCards)
+        .where(eq(jobCards.crmTicketNumber, ticket))
+        .limit(1);
+      if (!existing) break;
+      attempts++;
+    } while (attempts < 10);
+    return ticket;
   }
 
   // ── Inventory ──────────────────────────────────────────────────────────────
@@ -604,6 +722,28 @@ export class DatabaseStorage implements IStorage {
       ...data,
     }).returning();
     return row;
+  }
+
+  async getJobCardWithItems(jobCardId: number) {
+    const [card] = await db.select().from(jobCards).where(eq(jobCards.id, jobCardId)).limit(1);
+    if (!card) return null;
+    const items = await db.select().from(jobCardItems)
+      .where(eq(jobCardItems.jobCardId, jobCardId))
+      .orderBy(jobCardItems.id);
+    return { ...card, items };
+  }
+
+  async addJobCardItems(jobCardId: number, items: { materialId?: number; materialDescriptionSnapshot: string; materialCodeSnapshot: string; quantity: number; unitPriceSnapshot?: string }[]) {
+    if (items.length === 0) return [];
+    const values = items.map(item => ({
+      jobCardId,
+      materialId: item.materialId || null,
+      materialDescriptionSnapshot: item.materialDescriptionSnapshot,
+      materialCodeSnapshot: item.materialCodeSnapshot,
+      quantity: item.quantity,
+      unitPriceSnapshot: item.unitPriceSnapshot || null,
+    }));
+    return db.insert(jobCardItems).values(values).returning();
   }
 
   // ── Feedback Forms ────────────────────────────────────────────────────────

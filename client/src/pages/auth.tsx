@@ -215,7 +215,7 @@ export default function AuthPage() {
           )}
 
           <p className="text-center text-xs text-muted-foreground">
-            Default admin: prashant@dronefix.com / Admin@123
+            Default admin: admin@dronefix.com / Admin@123
           </p>
 
           {/* Mobile company info */}

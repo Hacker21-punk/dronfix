@@ -56,7 +56,6 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
-import { Checkbox } from "@/components/ui/checkbox";
 import type { Expense } from "@shared/schema";
 
 export default function ServiceRequestDetail() {
@@ -1671,11 +1670,17 @@ function JobCardSection({ requestId, request, role }: { requestId: number; reque
   const customerSig = sigs?.find((s: any) => s.type === "customer");
   const engineerSig = sigs?.find((s: any) => s.type === "engineer");
 
+  // Job card items (Parts Usage List)
+  const jobCardItems = jobCard?.items || [];
+
   const startEditing = () => {
     setForm({
       customerName: jobCard?.customerName || request.customerName || "",
       droneModel: jobCard?.droneModel || request.droneModel || "",
       droneSerialNumber: jobCard?.droneSerialNumber || request.serialNumber || "",
+      modelDetails: jobCard?.modelDetails || "",
+      serviceType: jobCard?.serviceType || "",
+      engineerNotes: jobCard?.engineerNotes || "",
       physicalCondition: jobCard?.physicalCondition || "",
       propellerStatus: jobCard?.propellerStatus || "",
       motorStatus: jobCard?.motorStatus || "",
@@ -1775,7 +1780,6 @@ function JobCardSection({ requestId, request, role }: { requestId: number; reque
         </div>
       </CardHeader>
       <CardContent>
-        {/* ... (rest of the content remains exactly the same until the canvas) ... */}
         {!jobCard && !isEditing ? (
           <div className="text-center py-6 text-sm text-muted-foreground">
             <FileText className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
@@ -1783,6 +1787,15 @@ function JobCardSection({ requestId, request, role }: { requestId: number; reque
           </div>
         ) : (
           <div className="space-y-4">
+            {/* CRM Ticket Number */}
+            {jobCard?.crmTicketNumber && (
+              <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                <span className="text-xs font-medium text-muted-foreground">CRM Ticket:</span>
+                <Badge variant="secondary" className="font-mono text-sm tracking-wide">{jobCard.crmTicketNumber}</Badge>
+              </div>
+            )}
+
+            {/* Customer + Drone Info */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Customer</Label>
@@ -1798,6 +1811,47 @@ function JobCardSection({ requestId, request, role }: { requestId: number; reque
                   <Input className="h-8 text-xs" value={form.droneModel} onChange={(e) => setForm((p: any) => ({ ...p, droneModel: e.target.value }))} />
                 ) : (
                   <p className="text-sm">{jobCard?.droneModel}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Model Details + Service Type */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Model Details</Label>
+                {isEditing ? (
+                  <Select value={form.modelDetails || ""} onValueChange={(v) => setForm((p: any) => ({ ...p, modelDetails: v }))}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select model" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="E10">E10</SelectItem>
+                      <SelectItem value="E10P">E10P</SelectItem>
+                      <SelectItem value="DHQ4">DHQ4</SelectItem>
+                      <SelectItem value="Others">Others</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-sm">{jobCard?.modelDetails || <span className="text-muted-foreground italic">Not set</span>}</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Service Type</Label>
+                {isEditing ? (
+                  <Select value={form.serviceType || ""} onValueChange={(v) => setForm((p: any) => ({ ...p, serviceType: v }))}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Paid">Paid</SelectItem>
+                      <SelectItem value="Warranty">Warranty</SelectItem>
+                      <SelectItem value="Insurance">Insurance</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-sm">
+                    {jobCard?.serviceType ? (
+                      <Badge variant="outline" className="text-xs">{jobCard.serviceType}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground italic">Not set</span>
+                    )}
+                  </p>
                 )}
               </div>
             </div>
@@ -1822,6 +1876,41 @@ function JobCardSection({ requestId, request, role }: { requestId: number; reque
             {renderTextRow("Parts Replaced", "partsReplaced")}
             {renderTextRow("Observations", "observations")}
             {renderTextRow("Recommendations", "recommendations")}
+
+            {/* Engineer Notes */}
+            {renderTextRow("Engineer Notes", "engineerNotes")}
+
+            {/* Parts Usage List */}
+            {jobCardItems.length > 0 && (
+              <>
+                <Separator />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Parts Usage List</p>
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[40px]">#</TableHead>
+                        <TableHead>Part Number</TableHead>
+                        <TableHead>Part Description</TableHead>
+                        <TableHead className="text-right">Qty</TableHead>
+                        {role !== 'engineer' && <TableHead className="text-right">Price ₹</TableHead>}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {jobCardItems.map((item: any, idx: number) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
+                          <TableCell><Badge variant="secondary" className="font-mono text-xs">{item.materialCodeSnapshot}</Badge></TableCell>
+                          <TableCell className="text-sm">{item.materialDescriptionSnapshot}</TableCell>
+                          <TableCell className="text-right tabular-nums">{item.quantity}</TableCell>
+                          {role !== 'engineer' && <TableCell className="text-right tabular-nums">₹{Number(item.unitPriceSnapshot || 0).toFixed(2)}</TableCell>}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            )}
 
             {isEditing && (
               <div className="flex gap-2 pt-2">

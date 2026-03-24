@@ -1,472 +1,899 @@
-import { useState } from "react";
-import { useLocation } from "wouter";
-import { useInventory, useCreateInventoryItem, useUpdateInventoryItem, useDeleteInventoryItem } from "@/hooks/use-inventory";
-import { useCurrentUser } from "@/hooks/use-users";
-import { 
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
-} from "@/components/ui/table";
+import { useState, useMemo, useRef } from "react";
+import {
+  useMaterials,
+  useMaterialDescriptions,
+  useMaterialsByDescription,
+  useCreateMaterial,
+  useUpdateMaterial,
+  useDeleteMaterial,
+  useBulkUploadMaterials,
+} from "@/hooks/use-materials";
+import {
+  useServiceTypes,
+  useCreateServiceType,
+  useDeleteServiceType,
+} from "@/hooks/use-service-types";
+import {
+  useInventory,
+  useCreateInventoryItem,
+  useUpdateInventoryItem,
+  useDeleteInventoryItem,
+} from "@/hooks/use-inventory";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { 
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter 
-} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, Trash2, Edit, AlertCircle, PackageOpen } from "lucide-react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { insertInventorySchema, type Inventory } from "@shared/schema";
-import { formatCurrency } from "@/lib/utils";
-import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  Package,
+  Plus,
+  Pencil,
+  Trash2,
+  Upload,
+  Search,
+  DatabaseZap,
+  AlertTriangle,
+  Check,
+  ChevronsUpDown,
+  X,
+  Settings,
+  FileSpreadsheet,
+} from "lucide-react";
 
-export default function InventoryPage() {
-  const { data: inventory, isLoading } = useInventory();
-  const { data: profile } = useCurrentUser();
-  const [search, setSearch] = useState("");
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<Inventory | null>(null);
-  const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
-  const [, navigate] = useLocation();
+// ─── Inventory Stock Tab ─────────────────────────────────────────────────────
+function InventoryStockTab() {
+  const { data: items = [], isLoading } = useInventory();
+  const createItem = useCreateInventoryItem();
+  const updateItem = useUpdateInventoryItem();
+  const deleteItem = useDeleteInventoryItem();
+  const { data: descriptions = [] } = useMaterialDescriptions();
 
-  const role = profile?.role;
-  const isAdmin = role === 'admin';
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [editItem, setEditItem] = useState<any>(null);
 
-  if (profile && !isAdmin) {
-    navigate("/");
-    return null;
+  // Add Item Form State
+  const [selectedDescription, setSelectedDescription] = useState<string | null>(null);
+  const [descOpen, setDescOpen] = useState(false);
+  const [descSearch, setDescSearch] = useState("");
+  const { data: matchingMaterials = [] } = useMaterialsByDescription(selectedDescription);
+  const [selectedMaterial, setSelectedMaterial] = useState<any>(null);
+  const [quantity, setQuantity] = useState("0");
+  const [criticalLevel, setCriticalLevel] = useState("5");
+  const [priceOverride, setPriceOverride] = useState("");
+
+  const filteredDescriptions = useMemo(() => {
+    if (!descSearch) return descriptions;
+    return descriptions.filter((d: string) =>
+      d.toLowerCase().includes(descSearch.toLowerCase())
+    );
+  }, [descriptions, descSearch]);
+
+  function resetAddForm() {
+    setSelectedDescription(null);
+    setSelectedMaterial(null);
+    setQuantity("0");
+    setCriticalLevel("5");
+    setPriceOverride("");
+    setDescSearch("");
   }
 
-  const filteredInventory = inventory?.filter((item: any) => 
-    item.itemName.toLowerCase().includes(search.toLowerCase()) || 
-    item.sku.toLowerCase().includes(search.toLowerCase())
-  );
+  // When description changes, auto-select if only one material
+  function handleDescriptionSelect(desc: string) {
+    setSelectedDescription(desc);
+    setSelectedMaterial(null);
+    setPriceOverride("");
+    setDescOpen(false);
+  }
 
-  const canManage = isAdmin;
-  const canUpdateStock = isAdmin;
+  // Auto-select single material
+  const autoMaterial = matchingMaterials.length === 1 ? matchingMaterials[0] : null;
+  const activeMaterial = selectedMaterial || autoMaterial;
+
+  function handleAddSubmit() {
+    if (!activeMaterial) return;
+    const price = priceOverride || activeMaterial.customerSalePrice;
+    createItem.mutate(
+      {
+        itemName: activeMaterial.materialDescription,
+        sku: activeMaterial.materialCode,
+        quantity: parseInt(quantity) || 0,
+        unitPrice: price,
+        criticalLevel: parseInt(criticalLevel) || 5,
+      },
+      {
+        onSuccess: () => {
+          setIsAddOpen(false);
+          resetAddForm();
+        },
+      }
+    );
+  }
+
+  function handleEditSubmit() {
+    if (!editItem) return;
+    updateItem.mutate(editItem, {
+      onSuccess: () => setEditItem(null),
+    });
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-display font-bold">Inventory</h1>
-          <p className="text-muted-foreground mt-1">
-            {isAdmin ? "Manage spare parts and critical stock levels" : "View spare parts and update stock levels"}
+          <h3 className="text-lg font-semibold">Current Stock</h3>
+          <p className="text-sm text-muted-foreground">
+            {items.length} items · {items.filter((i: any) => i.quantity <= i.criticalLevel).length} low stock
           </p>
         </div>
-        
-        <div className="flex flex-wrap gap-2">
-          {canUpdateStock && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setIsBulkEditOpen(true)} 
-              className="h-9"
-              data-testid="button-bulk-edit-stock"
-            >
-              <PackageOpen className="h-4 w-4 mr-2" />
-              Bulk Edit Stock
+        <Dialog open={isAddOpen} onOpenChange={(o) => { setIsAddOpen(o); if (!o) resetAddForm(); }}>
+          <DialogTrigger asChild>
+            <Button className="gap-2">
+              <Plus className="h-4 w-4" /> Add Item
             </Button>
-          )}
-          {canManage && (
-            <Button size="sm" onClick={() => setIsCreateOpen(true)} className="h-9 shadow-lg shadow-primary/20" data-testid="button-add-item">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Item
-            </Button>
-          )}
-        </div>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[560px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <DatabaseZap className="h-5 w-5 text-primary" />
+                Add Inventory Item
+              </DialogTitle>
+              <DialogDescription>
+                Select from Materials Master. SKU, price auto-mapped.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              {/* 1. Material Description Dropdown (searchable) */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Material Description</Label>
+                <Popover open={descOpen} onOpenChange={setDescOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={descOpen}
+                      className="w-full justify-between text-left font-normal"
+                    >
+                      {selectedDescription || "Search & select material..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[500px] p-0" align="start">
+                    <Command>
+                      <CommandInput
+                        placeholder="Type to search materials..."
+                        value={descSearch}
+                        onValueChange={setDescSearch}
+                      />
+                      <CommandList>
+                        <CommandEmpty>No materials found.</CommandEmpty>
+                        <CommandGroup className="max-h-64 overflow-auto">
+                          {filteredDescriptions.map((desc: string) => (
+                            <CommandItem
+                              key={desc}
+                              value={desc}
+                              onSelect={() => handleDescriptionSelect(desc)}
+                            >
+                              <Check
+                                className={`mr-2 h-4 w-4 ${
+                                  selectedDescription === desc ? "opacity-100" : "opacity-0"
+                                }`}
+                              />
+                              {desc}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {/* 2. SKU Selector (auto or dropdown) */}
+              {selectedDescription && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Part Number (SKU)</Label>
+                  {matchingMaterials.length === 1 ? (
+                    <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                      <Badge variant="secondary">{matchingMaterials[0].materialCode}</Badge>
+                      <span className="text-sm text-muted-foreground">Auto-mapped</span>
+                    </div>
+                  ) : matchingMaterials.length > 1 ? (
+                    <Select
+                      onValueChange={(val) => {
+                        const m = matchingMaterials.find((m: any) => String(m.id) === val);
+                        setSelectedMaterial(m);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select SKU..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {matchingMaterials.map((m: any) => (
+                          <SelectItem key={m.id} value={String(m.id)}>
+                            {m.materialCode} — ₹{m.customerSalePrice}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Loading...</p>
+                  )}
+                </div>
+              )}
+
+              {/* 3. Price (auto-fetched with override) */}
+              {activeMaterial && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">
+                      Sale Price (inc. GST)
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-semibold text-green-600">
+                        ₹{activeMaterial.customerSalePrice}
+                      </span>
+                      <Badge variant="outline" className="text-xs">Auto</Badge>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Override Price</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="Leave blank to use auto"
+                      value={priceOverride}
+                      onChange={(e) => setPriceOverride(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* 4. Quantity & Critical Level */}
+              {activeMaterial && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Initial Quantity</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={quantity}
+                      onChange={(e) => setQuantity(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Critical Level</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={criticalLevel}
+                      onChange={(e) => setCriticalLevel(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setIsAddOpen(false); resetAddForm(); }}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddSubmit}
+                disabled={!activeMaterial || createItem.isPending}
+              >
+                {createItem.isPending ? "Adding..." : "Add to Inventory"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
-      <div className="flex items-center gap-4 bg-card p-4 rounded-xl border border-border shadow-sm">
-        <Search className="h-5 w-5 text-muted-foreground" />
-        <Input 
-          placeholder="Search by name or SKU..." 
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="border-0 focus-visible:ring-0 bg-transparent px-0 text-base"
-        />
-      </div>
-
-      <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+      {/* Inventory Table */}
+      <Card>
         <Table>
-          <TableHeader className="bg-muted/50">
+          <TableHeader>
             <TableRow>
-              <TableHead>SKU</TableHead>
               <TableHead>Item Name</TableHead>
-              <TableHead className="text-right">Price</TableHead>
-              <TableHead className="text-right">Quantity</TableHead>
-              <TableHead className="text-right">Status</TableHead>
-              {canManage && <TableHead className="text-right">Actions</TableHead>}
+              <TableHead>SKU</TableHead>
+              <TableHead className="text-right">Qty</TableHead>
+              <TableHead className="text-right">Unit Price</TableHead>
+              <TableHead className="text-right">Stock Value</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
+            {items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                  Loading inventory...
-                </TableCell>
-              </TableRow>
-            ) : filteredInventory?.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                  No items found
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  No items in inventory. Click "Add Item" to get started.
                 </TableCell>
               </TableRow>
             ) : (
-              filteredInventory?.map((item: any) => (
-                <TableRow key={item.id} className="group hover:bg-muted/30 transition-colors">
-                  <TableCell className="font-mono text-xs text-muted-foreground">{item.sku}</TableCell>
-                  <TableCell className="font-medium">{item.itemName}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(Number(item.unitPrice))}</TableCell>
-                  <TableCell className="text-right font-medium">{item.quantity}</TableCell>
-                  <TableCell className="text-right">
+              items.map((item: any) => (
+                <TableRow key={item.id}>
+                  <TableCell className="font-medium max-w-[200px] truncate" title={item.itemName}>
+                    {item.itemName}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" className="font-mono">{item.sku}</Badge>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{item.quantity}</TableCell>
+                  <TableCell className="text-right tabular-nums">₹{Number(item.unitPrice).toFixed(2)}</TableCell>
+                  <TableCell className="text-right tabular-nums font-medium">
+                    ₹{(item.quantity * Number(item.unitPrice)).toFixed(2)}
+                  </TableCell>
+                  <TableCell>
                     {item.quantity <= item.criticalLevel ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
-                        Low Stock
-                      </span>
+                      <Badge variant="destructive" className="gap-1">
+                        <AlertTriangle className="h-3 w-3" /> Low
+                      </Badge>
                     ) : (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                      <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50">
                         In Stock
-                      </span>
+                      </Badge>
                     )}
                   </TableCell>
-                  {canManage && (
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-8 w-8 hover:text-primary"
-                          onClick={() => setEditingItem(item)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <DeleteInventoryButton id={item.id} />
-                      </div>
-                    </TableCell>
-                  )}
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setEditItem({ ...item })}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="text-destructive">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete "{item.itemName}"?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will permanently remove this item from inventory.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteItem.mutate(item.id)}
+                              className="bg-destructive text-destructive-foreground"
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))
             )}
           </TableBody>
         </Table>
-      </div>
+      </Card>
 
-      <InventoryFormDialog 
-        open={isCreateOpen} 
-        onOpenChange={setIsCreateOpen} 
-        mode="create"
-      />
-      
-      <InventoryFormDialog 
-        open={!!editingItem} 
-        onOpenChange={(open) => !open && setEditingItem(null)} 
-        mode="edit"
-        defaultValues={editingItem}
-      />
-
-      {inventory && (
-        <BulkEditStockDialog
-          open={isBulkEditOpen}
-          onOpenChange={setIsBulkEditOpen}
-          items={inventory}
-        />
-      )}
+      {/* Edit Dialog */}
+      <Dialog open={!!editItem} onOpenChange={(o) => { if (!o) setEditItem(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Item</DialogTitle>
+          </DialogHeader>
+          {editItem && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Quantity</Label>
+                <Input
+                  type="number"
+                  value={editItem.quantity}
+                  onChange={(e) => setEditItem({ ...editItem, quantity: parseInt(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Unit Price (₹)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={editItem.unitPrice}
+                  onChange={(e) => setEditItem({ ...editItem, unitPrice: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Critical Level</Label>
+                <Input
+                  type="number"
+                  value={editItem.criticalLevel}
+                  onChange={(e) => setEditItem({ ...editItem, criticalLevel: parseInt(e.target.value) || 0 })}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditItem(null)}>Cancel</Button>
+            <Button onClick={handleEditSubmit} disabled={updateItem.isPending}>
+              {updateItem.isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function DeleteInventoryButton({ id }: { id: number }) {
-  const { mutate, isPending } = useDeleteInventoryItem();
-  
-  return (
-    <Button 
-      variant="ghost" 
-      size="icon" 
-      className="h-8 w-8 hover:text-destructive"
-      disabled={isPending}
-      onClick={() => {
-        if (confirm("Are you sure you want to delete this item?")) {
-          mutate(id);
-        }
-      }}
-    >
-      <Trash2 className="h-4 w-4" />
-    </Button>
-  );
-}
+// ─── Materials Master Tab ────────────────────────────────────────────────────
+function MaterialsMasterTab() {
+  const { data: materials = [], isLoading } = useMaterials();
+  const createMaterial = useCreateMaterial();
+  const updateMaterial = useUpdateMaterial();
+  const deleteMaterial = useDeleteMaterial();
+  const bulkUpload = useBulkUploadMaterials();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-const formSchema = insertInventorySchema.extend({
-  price: z.coerce.number(), // Coerce string to number
-  quantity: z.coerce.number(),
-  criticalLevel: z.coerce.number(),
-});
-
-function InventoryFormDialog({ 
-  open, 
-  onOpenChange, 
-  mode, 
-  defaultValues 
-}: { 
-  open: boolean; 
-  onOpenChange: (open: boolean) => void;
-  mode: "create" | "edit";
-  defaultValues?: Inventory | null;
-}) {
-  const createMutation = useCreateInventoryItem();
-  const updateMutation = useUpdateInventoryItem();
-  const isPending = createMutation.isPending || updateMutation.isPending;
-
-  const form = useForm({
-    resolver: zodResolver(formSchema),
-    defaultValues: defaultValues ? {
-      ...defaultValues,
-      unitPrice: Number(defaultValues.unitPrice),
-    } : {
-      itemName: "",
-      sku: "",
-      unitPrice: 0,
-      quantity: 0,
-      criticalLevel: 5,
-      description: "",
-    },
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [editMaterial, setEditMaterial] = useState<any>(null);
+  const [search, setSearch] = useState("");
+  const [form, setForm] = useState({
+    materialCode: "",
+    hsnCode: "",
+    materialDescription: "",
+    gstRate: "18",
+    customerBasicPrice: "",
+    gstAmount: "",
+    customerSalePrice: "",
   });
 
-  // Reset form when opening for create
-  if (open && mode === 'create' && form.formState.isSubmitSuccessful) {
-    form.reset();
-  }
-  
-  // Update form when editing item changes
-  if (open && mode === 'edit' && defaultValues && form.getValues().sku !== defaultValues.sku) {
-    form.reset({
-      ...defaultValues,
-      unitPrice: Number(defaultValues.unitPrice),
+  const filtered = useMemo(() => {
+    if (!search) return materials;
+    const s = search.toLowerCase();
+    return materials.filter(
+      (m: any) =>
+        m.materialDescription.toLowerCase().includes(s) ||
+        m.materialCode.toLowerCase().includes(s) ||
+        (m.hsnCode && m.hsnCode.toLowerCase().includes(s))
+    );
+  }, [materials, search]);
+
+  function resetForm() {
+    setForm({
+      materialCode: "",
+      hsnCode: "",
+      materialDescription: "",
+      gstRate: "18",
+      customerBasicPrice: "",
+      gstAmount: "",
+      customerSalePrice: "",
     });
   }
 
-  const onSubmit = (data: any) => {
-    if (mode === "create") {
-      createMutation.mutate(data, {
-        onSuccess: () => onOpenChange(false),
-      });
-    } else if (defaultValues) {
-      updateMutation.mutate({ id: defaultValues.id, ...data }, {
-        onSuccess: () => onOpenChange(false),
-      });
+  // Auto-calculate GST and sale price
+  function handleBasicPriceChange(val: string) {
+    const bp = parseFloat(val) || 0;
+    const rate = parseFloat(form.gstRate) || 18;
+    const gst = parseFloat((bp * rate / 100).toFixed(2));
+    const sale = parseFloat((bp + gst).toFixed(2));
+    setForm({ ...form, customerBasicPrice: val, gstAmount: String(gst), customerSalePrice: String(sale) });
+  }
+
+  function handleAddSubmit() {
+    createMaterial.mutate(form, {
+      onSuccess: () => {
+        setIsAddOpen(false);
+        resetForm();
+      },
+    });
+  }
+
+  function handleEditSubmit() {
+    if (!editMaterial) return;
+    updateMaterial.mutate(editMaterial, {
+      onSuccess: () => setEditMaterial(null),
+    });
+  }
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) {
+      bulkUpload.mutate(file);
     }
-  };
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <DialogTitle>{mode === "create" ? "Add New Item" : "Edit Item"}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="itemName">Item Name</Label>
-              <Input id="itemName" {...form.register("itemName")} />
-              {(form.formState.errors as any).itemName && <p className="text-xs text-destructive">{(form.formState.errors as any).itemName.message}</p>}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="sku">SKU</Label>
-              <Input id="sku" {...form.register("sku")} />
-              {form.formState.errors.sku && <p className="text-xs text-destructive">{form.formState.errors.sku.message}</p>}
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="unitPrice">Price</Label>
-              <Input id="unitPrice" type="number" step="0.01" {...form.register("unitPrice")} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="quantity">Quantity</Label>
-              <Input id="quantity" type="number" {...form.register("quantity")} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="criticalLevel">Critical Level</Label>
-              <Input id="criticalLevel" type="number" {...form.register("criticalLevel")} />
-            </div>
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
-            <Input id="description" {...form.register("description")} />
-          </div>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Saving..." : mode === "create" ? "Add Item" : "Save Changes"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function BulkEditStockDialog({ 
-  open, 
-  onOpenChange, 
-  items 
-}: { 
-  open: boolean; 
-  onOpenChange: (open: boolean) => void;
-  items: Inventory[];
-}) {
-  const [quantities, setQuantities] = useState<Record<number, number>>({});
-  const [isSaving, setIsSaving] = useState(false);
-  const [bulkSearch, setBulkSearch] = useState("");
-  const { toast } = useToast();
-
-  const initQuantities = () => {
-    const q: Record<number, number> = {};
-    items.forEach(item => { q[item.id] = item.quantity; });
-    setQuantities(q);
-    setBulkSearch("");
-  };
-
-  const handleOpenChange = (isOpen: boolean) => {
-    if (isOpen) initQuantities();
-    onOpenChange(isOpen);
-  };
-
-  const changedItems = items.filter(item => quantities[item.id] !== undefined && quantities[item.id] !== item.quantity);
-
-  const handleSave = async () => {
-    if (changedItems.length === 0) {
-      onOpenChange(false);
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const updates = changedItems.map(item => ({
-        id: item.id,
-        quantity: quantities[item.id],
-      }));
-
-      await apiRequest("PATCH", "/api/inventory/bulk-update", { updates });
-
-      toast({
-        title: "Stock Updated",
-        description: `${updates.length} item${updates.length > 1 ? "s" : ""} updated successfully.`,
-      });
-
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
-      onOpenChange(false);
-    } catch (err) {
-      toast({ title: "Update Failed", description: "Could not save stock changes.", variant: "destructive" });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const filteredItems = items.filter(item =>
-    item.itemName.toLowerCase().includes(bulkSearch.toLowerCase()) ||
-    item.sku.toLowerCase().includes(bulkSearch.toLowerCase())
-  );
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[700px] max-h-[85vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Bulk Edit Stock Quantities</DialogTitle>
-          <p className="text-sm text-muted-foreground">
-            Update stock quantities for multiple items at once. Changed items are highlighted.
-          </p>
-        </DialogHeader>
-        
-        <div className="flex items-center gap-4 bg-muted/50 p-3 rounded-lg">
-          <Search className="h-4 w-4 text-muted-foreground" />
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Filter items..."
-            value={bulkSearch}
-            onChange={(e) => setBulkSearch(e.target.value)}
-            className="border-0 focus-visible:ring-0 bg-transparent px-0"
-            data-testid="input-bulk-search"
+            placeholder="Search materials..."
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={handleFileUpload}
+          />
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={bulkUpload.isPending}
+          >
+            <Upload className="h-4 w-4" />
+            {bulkUpload.isPending ? "Uploading..." : "Bulk Upload"}
+          </Button>
+          <Dialog open={isAddOpen} onOpenChange={(o) => { setIsAddOpen(o); if (!o) resetForm(); }}>
+            <DialogTrigger asChild>
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" /> Add Material
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Add Material to Master</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 py-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label>Material Code</Label>
+                    <Input value={form.materialCode} onChange={(e) => setForm({ ...form, materialCode: e.target.value })} placeholder="17501" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>HSN Code</Label>
+                    <Input value={form.hsnCode} onChange={(e) => setForm({ ...form, hsnCode: e.target.value })} placeholder="39174000" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label>Material Description</Label>
+                  <Input value={form.materialDescription} onChange={(e) => setForm({ ...form, materialDescription: e.target.value })} placeholder="Tank - L Connector (10Ltr)" />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label>Basic Price (₹)</Label>
+                    <Input type="number" step="0.01" value={form.customerBasicPrice} onChange={(e) => handleBasicPriceChange(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>GST ({form.gstRate}%)</Label>
+                    <Input type="number" step="0.01" value={form.gstAmount} readOnly className="bg-muted" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Sale Price</Label>
+                    <Input type="number" step="0.01" value={form.customerSalePrice} readOnly className="bg-muted" />
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setIsAddOpen(false); resetForm(); }}>Cancel</Button>
+                <Button onClick={handleAddSubmit} disabled={createMaterial.isPending}>
+                  {createMaterial.isPending ? "Adding..." : "Add Material"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
 
-        <div className="flex-1 overflow-y-auto min-h-0 border rounded-lg">
+      {/* Info bar */}
+      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+        <span>{materials.length} total materials</span>
+        <span>·</span>
+        <span>{filtered.length} shown</span>
+      </div>
+
+      <Card>
+        <div className="overflow-auto max-h-[60vh]">
           <Table>
-            <TableHeader className="bg-muted/50 sticky top-0 z-10">
+            <TableHeader>
               <TableRow>
-                <TableHead className="w-[100px]">SKU</TableHead>
-                <TableHead>Item Name</TableHead>
-                <TableHead className="text-right w-[100px]">Current</TableHead>
-                <TableHead className="text-right w-[130px]">New Qty</TableHead>
+                <TableHead className="sticky top-0 bg-background z-10">Code</TableHead>
+                <TableHead className="sticky top-0 bg-background z-10">HSN</TableHead>
+                <TableHead className="sticky top-0 bg-background z-10">Description</TableHead>
+                <TableHead className="sticky top-0 bg-background z-10 text-right">Basic ₹</TableHead>
+                <TableHead className="sticky top-0 bg-background z-10 text-right">GST ₹</TableHead>
+                <TableHead className="sticky top-0 bg-background z-10 text-right">Sale ₹</TableHead>
+                <TableHead className="sticky top-0 bg-background z-10 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredItems.map((item) => {
-                const isChanged = quantities[item.id] !== undefined && quantities[item.id] !== item.quantity;
-                const isLow = (quantities[item.id] ?? item.quantity) <= item.criticalLevel;
-                return (
-                  <TableRow 
-                    key={item.id} 
-                    className={isChanged ? "bg-primary/5" : ""}
-                    data-testid={`row-bulk-item-${item.id}`}
-                  >
-                    <TableCell className="font-mono text-xs text-muted-foreground">{item.sku}</TableCell>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        {item.itemName}
-                        {isLow && <AlertCircle className="h-3.5 w-3.5 text-destructive" />}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right text-muted-foreground">{item.quantity}</TableCell>
-                    <TableCell className="text-right">
-                      <Input
-                        type="number"
-                        min={0}
-                        value={quantities[item.id] ?? item.quantity}
-                        onChange={(e) => setQuantities(prev => ({
-                          ...prev,
-                          [item.id]: parseInt(e.target.value) || 0,
-                        }))}
-                        className={`w-24 ml-auto text-right ${isChanged ? "border-primary" : ""}`}
-                        data-testid={`input-bulk-qty-${item.id}`}
-                      />
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-              {filteredItems.length === 0 && (
+              {filtered.map((m: any) => (
+                <TableRow key={m.id}>
+                  <TableCell>
+                    <Badge variant="secondary" className="font-mono">{m.materialCode}</Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-xs">{m.hsnCode || "—"}</TableCell>
+                  <TableCell className="max-w-[250px] truncate" title={m.materialDescription}>
+                    {m.materialDescription}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">₹{Number(m.customerBasicPrice).toFixed(2)}</TableCell>
+                  <TableCell className="text-right tabular-nums">₹{Number(m.gstAmount).toFixed(2)}</TableCell>
+                  <TableCell className="text-right tabular-nums font-medium">₹{Number(m.customerSalePrice).toFixed(2)}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => setEditMaterial({ ...m })}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="text-destructive">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete material "{m.materialCode}"?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This removes {m.materialDescription} from the master list.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteMaterial.mutate(m.id)}
+                              className="bg-destructive text-destructive-foreground"
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-20 text-center text-muted-foreground">
-                    No items found
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    {search ? "No materials match your search." : "No materials in master. Upload a price list."}
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </div>
+      </Card>
 
-        <DialogFooter className="flex-row items-center justify-between gap-2 sm:justify-between">
+      {/* Edit Dialog */}
+      <Dialog open={!!editMaterial} onOpenChange={(o) => { if (!o) setEditMaterial(null); }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Material</DialogTitle>
+          </DialogHeader>
+          {editMaterial && (
+            <div className="space-y-3 py-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Material Code</Label>
+                  <Input value={editMaterial.materialCode} onChange={(e) => setEditMaterial({ ...editMaterial, materialCode: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label>HSN Code</Label>
+                  <Input value={editMaterial.hsnCode || ""} onChange={(e) => setEditMaterial({ ...editMaterial, hsnCode: e.target.value })} />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label>Material Description</Label>
+                <Input value={editMaterial.materialDescription} onChange={(e) => setEditMaterial({ ...editMaterial, materialDescription: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label>Basic Price (₹)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={editMaterial.customerBasicPrice}
+                    onChange={(e) => {
+                      const bp = parseFloat(e.target.value) || 0;
+                      const rate = parseFloat(editMaterial.gstRate) || 18;
+                      const gst = parseFloat((bp * rate / 100).toFixed(2));
+                      setEditMaterial({
+                        ...editMaterial,
+                        customerBasicPrice: e.target.value,
+                        gstAmount: String(gst),
+                        customerSalePrice: String(parseFloat((bp + gst).toFixed(2))),
+                      });
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>GST ₹</Label>
+                  <Input value={editMaterial.gstAmount} readOnly className="bg-muted" />
+                </div>
+                <div className="space-y-1">
+                  <Label>Sale ₹</Label>
+                  <Input value={editMaterial.customerSalePrice} readOnly className="bg-muted" />
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditMaterial(null)}>Cancel</Button>
+            <Button onClick={handleEditSubmit} disabled={updateMaterial.isPending}>
+              {updateMaterial.isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ─── Service Types Tab ───────────────────────────────────────────────────────
+function ServiceTypesTab() {
+  const { data: types = [], isLoading } = useServiceTypes();
+  const createType = useCreateServiceType();
+  const deleteType = useDeleteServiceType();
+  const [newName, setNewName] = useState("");
+
+  function handleAdd() {
+    if (!newName.trim()) return;
+    createType.mutate(newName.trim(), {
+      onSuccess: () => setNewName(""),
+    });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-lg font-semibold">Service Types</h3>
+        <p className="text-sm text-muted-foreground">
+          Manage service types (Paid, Warranty, Insurance, etc.)
+        </p>
+      </div>
+
+      <div className="flex items-center gap-3 max-w-sm">
+        <Input
+          placeholder="New service type..."
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+        />
+        <Button onClick={handleAdd} disabled={createType.isPending || !newName.trim()}>
+          <Plus className="h-4 w-4 mr-1" />
+          Add
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center h-32">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {types.map((t: any) => (
+            <Badge key={t.id} variant="secondary" className="gap-1 py-2 px-3 text-sm">
+              {t.name}
+              <button
+                onClick={() => deleteType.mutate(t.id)}
+                className="ml-1 hover:text-destructive transition-colors"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+          {types.length === 0 && (
+            <p className="text-sm text-muted-foreground">No service types defined yet.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Inventory Page ─────────────────────────────────────────────────────
+export default function InventoryPage() {
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center gap-3">
+        <div className="p-2 bg-primary/10 rounded-lg">
+          <Package className="h-6 w-6 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold">Inventory Management</h1>
           <p className="text-sm text-muted-foreground">
-            {changedItems.length > 0
-              ? `${changedItems.length} item${changedItems.length > 1 ? "s" : ""} changed`
-              : "No changes"}
+            Manage stock, materials master, and service types
           </p>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} data-testid="button-bulk-cancel">
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleSave} 
-              disabled={isSaving || changedItems.length === 0}
-              data-testid="button-bulk-save"
-            >
-              {isSaving ? "Saving..." : "Save All Changes"}
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </div>
+
+      <Tabs defaultValue="stock" className="space-y-4">
+        <TabsList className="grid w-full max-w-md grid-cols-3">
+          <TabsTrigger value="stock" className="gap-2">
+            <Package className="h-4 w-4" />
+            Stock
+          </TabsTrigger>
+          <TabsTrigger value="materials" className="gap-2">
+            <FileSpreadsheet className="h-4 w-4" />
+            Materials
+          </TabsTrigger>
+          <TabsTrigger value="settings" className="gap-2">
+            <Settings className="h-4 w-4" />
+            Settings
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="stock">
+          <InventoryStockTab />
+        </TabsContent>
+        <TabsContent value="materials">
+          <MaterialsMasterTab />
+        </TabsContent>
+        <TabsContent value="settings">
+          <ServiceTypesTab />
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }
