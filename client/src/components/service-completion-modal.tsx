@@ -1,16 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Shield, CheckCircle, PenTool, Camera, MapPin, Loader2, AlertTriangle } from "lucide-react";
-import {
-  useSendAadhaarOtp,
-  useVerifyAadhaarOtp,
-  useSecureComplete,
-} from "@/hooks/use-service-requests";
+import { useSecureComplete } from "@/hooks/use-service-requests";
 
 interface ServiceCompletionModalProps {
   open: boolean;
@@ -19,24 +13,14 @@ interface ServiceCompletionModalProps {
 }
 
 const STEPS = [
-  { id: 1, title: "Aadhaar Verification", icon: Shield },
-  { id: 2, title: "Digital Signature", icon: PenTool },
-  { id: 3, title: "Customer Photo", icon: Camera },
+  { id: 1, title: "Digital Signature", icon: PenTool },
+  { id: 2, title: "Customer Photo", icon: Camera },
 ];
 
 export function ServiceCompletionModal({ open, onOpenChange, requestId }: ServiceCompletionModalProps) {
   const [currentStep, setCurrentStep] = useState(1);
 
-  // Step 1: Aadhaar
-  const [aadhaarNumber, setAadhaarNumber] = useState("");
-  const [consent, setConsent] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [otp, setOtp] = useState("");
-  const [aadhaarVerified, setAadhaarVerified] = useState(false);
-  const [maskedAadhaar, setMaskedAadhaar] = useState("");
-  const [aadhaarError, setAadhaarError] = useState("");
-
-  // Step 2: Signature
+  // Step 1: Signature
   const [hasCustomerMobile, setHasCustomerMobile] = useState<boolean | null>(null);
   const [signatureData, setSignatureData] = useState("");
   const [assistedSignature, setAssistedSignature] = useState(false);
@@ -44,7 +28,7 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
 
-  // Step 3: Geo Photo
+  // Step 2: Geo Photo
   const [geoPhotoData, setGeoPhotoData] = useState("");
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
@@ -54,8 +38,6 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
   const photoCanvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const sendOtpMutation = useSendAadhaarOtp();
-  const verifyOtpMutation = useVerifyAadhaarOtp();
   const secureCompleteMutation = useSecureComplete();
 
   // Clean up camera on unmount
@@ -69,7 +51,7 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
 
   // Init signature canvas
   useEffect(() => {
-    if (currentStep === 2 && sigCanvasRef.current) {
+    if (currentStep === 1 && sigCanvasRef.current) {
       const canvas = sigCanvasRef.current;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
@@ -83,37 +65,6 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
       ctx.lineWidth = 2;
     }
   }, [currentStep, hasCustomerMobile]);
-
-  // ── Aadhaar Handlers ──────────────────────────────
-  const handleSendOtp = async () => {
-    setAadhaarError("");
-    const clean = aadhaarNumber.replace(/\D/g, "");
-    if (clean.length !== 12) {
-      setAadhaarError("Please enter a valid 12-digit Aadhaar number");
-      return;
-    }
-    try {
-      const result = await sendOtpMutation.mutateAsync({ id: requestId, aadhaarNumber: clean, consent: true });
-      setOtpSent(true);
-      setMaskedAadhaar(result.maskedAadhaar || `XXXX-XXXX-${clean.slice(-4)}`);
-    } catch (e: any) {
-      setAadhaarError(e.message);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    setAadhaarError("");
-    try {
-      const result = await verifyOtpMutation.mutateAsync({ id: requestId, otp });
-      if (result.success) {
-        setAadhaarVerified(true);
-      } else {
-        setAadhaarError(result.message || "OTP verification failed");
-      }
-    } catch (e: any) {
-      setAadhaarError(e.message);
-    }
-  };
 
   // ── Signature Handlers ──────────────────────────────
   const getSigPos = (e: React.MouseEvent | React.TouchEvent) => {
@@ -219,11 +170,11 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
 
   // ── Final Submit ──────────────────────────────
   const handleFinalSubmit = async () => {
-    if (!aadhaarVerified || !signatureData || !geoPhotoData || latitude === null || longitude === null) return;
+    if (!signatureData || !geoPhotoData || latitude === null || longitude === null) return;
 
     await secureCompleteMutation.mutateAsync({
       id: requestId,
-      aadhaarMasked: maskedAadhaar,
+      aadhaarMasked: "SKIPPED",
       signatureData,
       assistedSignature,
       geoPhotoData,
@@ -233,9 +184,8 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
     onOpenChange(false);
   };
 
-  const canProceedStep1 = aadhaarVerified;
-  const canProceedStep2 = !!signatureData;
-  const canProceedStep3 = !!geoPhotoData && latitude !== null && longitude !== null;
+  const canProceedStep1 = !!signatureData;
+  const canProceedStep2 = !!geoPhotoData && latitude !== null && longitude !== null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -274,98 +224,8 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
           })}
         </div>
 
-        {/* Step 1: Aadhaar OTP */}
+        {/* Step 1: Digital Signature */}
         {currentStep === 1 && (
-          <div className="space-y-4">
-            {!aadhaarVerified ? (
-              <>
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-                  <Shield className="h-4 w-4 inline mr-1" />
-                  Aadhaar verification is <strong>mandatory</strong> to complete service.
-                </div>
-
-                {!otpSent ? (
-                  <>
-                    <div className="space-y-2">
-                      <Label>Aadhaar Number (12 digits)</Label>
-                      <Input
-                        value={aadhaarNumber}
-                        onChange={(e) => setAadhaarNumber(e.target.value.replace(/[^0-9\s-]/g, ""))}
-                        placeholder="XXXX XXXX XXXX"
-                        maxLength={14}
-                      />
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <Checkbox
-                        id="aadhaar-consent"
-                        checked={consent}
-                        onCheckedChange={(v) => setConsent(!!v)}
-                      />
-                      <Label htmlFor="aadhaar-consent" className="text-xs text-muted-foreground leading-tight">
-                        I give my consent to verify my Aadhaar Identity for service completion verification. This data will be securely processed and never stored in full.
-                      </Label>
-                    </div>
-                    <Button
-                      className="w-full"
-                      disabled={!consent || aadhaarNumber.replace(/\D/g, "").length !== 12 || sendOtpMutation.isPending}
-                      onClick={handleSendOtp}
-                    >
-                      {sendOtpMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Sending OTP...</> : "Send OTP"}
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
-                      <CheckCircle className="h-4 w-4 inline mr-1" />
-                      OTP sent to Aadhaar-linked mobile for <strong>{maskedAadhaar}</strong>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Enter OTP</Label>
-                      <Input
-                        value={otp}
-                        onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                        placeholder="Enter 6-digit OTP"
-                        maxLength={6}
-                      />
-                    </div>
-                    <Button
-                      className="w-full"
-                      disabled={otp.length < 4 || verifyOtpMutation.isPending}
-                      onClick={handleVerifyOtp}
-                    >
-                      {verifyOtpMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Verifying...</> : "Verify OTP"}
-                    </Button>
-                  </>
-                )}
-
-                {aadhaarError && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                    <AlertTriangle className="h-4 w-4 inline mr-1" />
-                    {aadhaarError}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="text-center space-y-3 py-4">
-                <div className="h-16 w-16 rounded-full bg-green-100 mx-auto flex items-center justify-center">
-                  <CheckCircle className="h-8 w-8 text-green-600" />
-                </div>
-                <h3 className="font-semibold text-lg">Aadhaar Verified ✓</h3>
-                <p className="text-sm text-muted-foreground">Identity: <Badge variant="secondary">{maskedAadhaar}</Badge></p>
-                <p className="text-xs text-muted-foreground">Fields locked. Cannot be modified.</p>
-              </div>
-            )}
-
-            {canProceedStep1 && (
-              <Button className="w-full" onClick={() => setCurrentStep(2)}>
-                Continue to Signature →
-              </Button>
-            )}
-          </div>
-        )}
-
-        {/* Step 2: Digital Signature */}
-        {currentStep === 2 && (
           <div className="space-y-4">
             {!signatureData ? (
               <>
@@ -374,10 +234,10 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
                     <p className="text-sm font-medium">Does the customer have mobile access for signature?</p>
                     <div className="flex gap-3">
                       <Button className="flex-1" variant="outline" onClick={() => { setHasCustomerMobile(true); setAssistedSignature(false); }}>
-                        ✅ Yes — Standard Signature
+                        ✅ Yes — Standard
                       </Button>
                       <Button className="flex-1" variant="outline" onClick={() => { setHasCustomerMobile(false); setAssistedSignature(true); }}>
-                        ❌ No — Assisted Mode
+                        ❌ No — Assisted
                       </Button>
                     </div>
                   </div>
@@ -423,19 +283,16 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
               </div>
             )}
 
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setCurrentStep(1)}>← Back</Button>
-              {canProceedStep2 && (
-                <Button className="flex-1" onClick={() => setCurrentStep(3)}>
-                  Continue to Photo →
-                </Button>
-              )}
-            </div>
+            {canProceedStep1 && (
+              <Button className="w-full" onClick={() => setCurrentStep(2)}>
+                Continue to Photo →
+              </Button>
+            )}
           </div>
         )}
 
-        {/* Step 3: Geo-Tagged Customer Photo */}
-        {currentStep === 3 && (
+        {/* Step 2: Geo-Tagged Customer Photo */}
+        {currentStep === 2 && (
           <div className="space-y-4">
             {!geoPhotoData ? (
               <>
@@ -488,8 +345,8 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
             )}
 
             <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setCurrentStep(2)}>← Back</Button>
-              {canProceedStep3 && (
+              <Button variant="ghost" onClick={() => setCurrentStep(1)}>← Back</Button>
+              {canProceedStep2 && (
                 <Button
                   className="flex-1 bg-green-600 hover:bg-green-700"
                   onClick={handleFinalSubmit}

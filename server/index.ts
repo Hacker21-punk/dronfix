@@ -193,7 +193,7 @@ async function runMigrations() {
     const jobCardAlters = [
       `ALTER TABLE job_cards ADD COLUMN IF NOT EXISTS crm_ticket_number TEXT`,
       `ALTER TABLE job_cards ADD COLUMN IF NOT EXISTS model_details TEXT`,
-      `ALTER TABLE job_cards ADD COLUMN IF NOT EXISTS job_service_type TEXT`,
+      `ALTER TABLE job_cards ADD COLUMN IF NOT EXISTS service_type TEXT`,
       `ALTER TABLE job_cards ADD COLUMN IF NOT EXISTS engineer_notes TEXT`,
     ];
 
