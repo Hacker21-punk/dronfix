@@ -123,6 +123,62 @@ async function runMigrations() {
         unit_price_snapshot DECIMAL(12,2),
         created_at TIMESTAMP DEFAULT NOW()
       )`,
+      `CREATE TABLE IF NOT EXISTS aadhaar_verifications (
+        id SERIAL PRIMARY KEY,
+        service_request_id INTEGER NOT NULL REFERENCES service_requests(id),
+        masked_aadhaar TEXT NOT NULL,
+        otp_hash TEXT,
+        provider_transaction_id TEXT,
+        consent_given BOOLEAN NOT NULL DEFAULT false,
+        consent_timestamp TIMESTAMP,
+        otp_expires_at TIMESTAMP,
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        verified BOOLEAN NOT NULL DEFAULT false,
+        verified_at TIMESTAMP,
+        locked BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS feedback_forms (
+        id SERIAL PRIMARY KEY,
+        service_request_id INTEGER NOT NULL REFERENCES service_requests(id),
+        rating INTEGER NOT NULL,
+        remarks TEXT,
+        locked BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS signatures (
+        id SERIAL PRIMARY KEY,
+        service_request_id INTEGER NOT NULL REFERENCES service_requests(id),
+        type TEXT NOT NULL,
+        signature_data TEXT NOT NULL,
+        locked BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS edit_logs (
+        id SERIAL PRIMARY KEY,
+        entity_type TEXT NOT NULL,
+        entity_id INTEGER NOT NULL,
+        field TEXT NOT NULL,
+        old_value TEXT,
+        new_value TEXT,
+        edited_by TEXT REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS service_completions (
+        id SERIAL PRIMARY KEY,
+        service_request_id INTEGER NOT NULL REFERENCES service_requests(id),
+        aadhaar_masked TEXT NOT NULL,
+        aadhaar_verified BOOLEAN NOT NULL DEFAULT false,
+        verified_at TIMESTAMP,
+        signature_data TEXT NOT NULL,
+        assisted_signature BOOLEAN NOT NULL DEFAULT false,
+        geo_photo_data TEXT NOT NULL,
+        latitude DECIMAL(10, 7),
+        longitude DECIMAL(10, 7),
+        photo_timestamp TIMESTAMP,
+        locked BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`
     ];
 
     for (const sql of createTableStatements) {
