@@ -8,11 +8,7 @@ import {
   useDeleteMaterial,
   useBulkUploadMaterials,
 } from "@/hooks/use-materials";
-import {
-  useServiceTypes,
-  useCreateServiceType,
-  useDeleteServiceType,
-} from "@/hooks/use-service-types";
+
 import {
   useInventory,
   useCreateInventoryItem,
@@ -85,7 +81,6 @@ import {
   Check,
   ChevronsUpDown,
   X,
-  Settings,
   FileSpreadsheet,
 } from "lucide-react";
 
@@ -790,68 +785,6 @@ function MaterialsMasterTab() {
   );
 }
 
-// ─── Service Types Tab ───────────────────────────────────────────────────────
-function ServiceTypesTab() {
-  const { data: types = [], isLoading } = useServiceTypes();
-  const createType = useCreateServiceType();
-  const deleteType = useDeleteServiceType();
-  const [newName, setNewName] = useState("");
-
-  function handleAdd() {
-    if (!newName.trim()) return;
-    createType.mutate(newName.trim(), {
-      onSuccess: () => setNewName(""),
-    });
-  }
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <h3 className="text-lg font-semibold">Service Types</h3>
-        <p className="text-sm text-muted-foreground">
-          Manage service types (Paid, Warranty, Insurance, etc.)
-        </p>
-      </div>
-
-      <div className="flex items-center gap-3 max-w-sm">
-        <Input
-          placeholder="New service type..."
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-        />
-        <Button onClick={handleAdd} disabled={createType.isPending || !newName.trim()}>
-          <Plus className="h-4 w-4 mr-1" />
-          Add
-        </Button>
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center h-32">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-        </div>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {types.map((t: any) => (
-            <Badge key={t.id} variant="secondary" className="gap-1 py-2 px-3 text-sm">
-              {t.name}
-              <button
-                onClick={() => deleteType.mutate(t.id)}
-                className="ml-1 hover:text-destructive transition-colors"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          ))}
-          {types.length === 0 && (
-            <p className="text-sm text-muted-foreground">No service types defined yet.</p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Main Inventory Page ─────────────────────────────────────────────────────
 export default function InventoryPage() {
   return (
@@ -863,13 +796,13 @@ export default function InventoryPage() {
         <div>
           <h1 className="text-2xl font-bold">Inventory Management</h1>
           <p className="text-sm text-muted-foreground">
-            Manage stock, materials master, and service types
+            Manage stock and materials master
           </p>
         </div>
       </div>
 
       <Tabs defaultValue="stock" className="space-y-4">
-        <TabsList className="grid w-full max-w-md grid-cols-3">
+        <TabsList className="grid w-full max-w-sm grid-cols-2">
           <TabsTrigger value="stock" className="gap-2">
             <Package className="h-4 w-4" />
             Stock
@@ -878,10 +811,6 @@ export default function InventoryPage() {
             <FileSpreadsheet className="h-4 w-4" />
             Materials
           </TabsTrigger>
-          <TabsTrigger value="settings" className="gap-2">
-            <Settings className="h-4 w-4" />
-            Settings
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="stock">
@@ -889,9 +818,6 @@ export default function InventoryPage() {
         </TabsContent>
         <TabsContent value="materials">
           <MaterialsMasterTab />
-        </TabsContent>
-        <TabsContent value="settings">
-          <ServiceTypesTab />
         </TabsContent>
       </Tabs>
     </div>
