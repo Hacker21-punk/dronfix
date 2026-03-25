@@ -89,12 +89,71 @@ import { pool } from "./db";
 import { seedMaterials } from "./seed-materials-startup";
 
 /*
-  Runtime schema migration — ensures new columns exist even if db:push failed
+  Runtime schema migration — ensures new columns/tables exist even if db:push failed
 */
 async function runMigrations() {
   const client = await pool.connect();
   try {
+    // ── New tables (Inventory system) ─────────────────────────────────────
+    const createTableStatements = [
+      `CREATE TABLE IF NOT EXISTS materials_master (
+        id SERIAL PRIMARY KEY,
+        material_code TEXT NOT NULL UNIQUE,
+        hsn_code TEXT,
+        material_description TEXT NOT NULL,
+        gst_rate DECIMAL(5,2) DEFAULT 18,
+        customer_basic_price DECIMAL(12,2) NOT NULL,
+        gst_amount DECIMAL(12,2) NOT NULL,
+        customer_sale_price DECIMAL(12,2) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS service_types (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS job_card_items (
+        id SERIAL PRIMARY KEY,
+        job_card_id INTEGER NOT NULL REFERENCES job_cards(id),
+        material_id INTEGER REFERENCES materials_master(id),
+        material_description_snapshot TEXT NOT NULL,
+        material_code_snapshot TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        unit_price_snapshot DECIMAL(12,2),
+        created_at TIMESTAMP DEFAULT NOW()
+      )`,
+    ];
+
+    for (const sql of createTableStatements) {
+      try { await client.query(sql); } catch (e: any) {
+        if (!e.message?.includes('already exists')) {
+          console.warn(`Migration (create table) warning: ${e.message}`);
+        }
+      }
+    }
+
+    // ── New columns on job_cards ──────────────────────────────────────────
+    const jobCardAlters = [
+      `ALTER TABLE job_cards ADD COLUMN IF NOT EXISTS crm_ticket_number TEXT`,
+      `ALTER TABLE job_cards ADD COLUMN IF NOT EXISTS model_details TEXT`,
+      `ALTER TABLE job_cards ADD COLUMN IF NOT EXISTS job_service_type TEXT`,
+      `ALTER TABLE job_cards ADD COLUMN IF NOT EXISTS engineer_notes TEXT`,
+    ];
+
+    // Add unique constraint on crm_ticket_number (safe if already exists)
+    const jobCardConstraints = [
+      `DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'job_cards_crm_ticket_number_unique')
+        THEN ALTER TABLE job_cards ADD CONSTRAINT job_cards_crm_ticket_number_unique UNIQUE (crm_ticket_number);
+        END IF;
+      END $$`,
+    ];
+
+    // ── Existing expense column migrations ───────────────────────────────
     const alterStatements = [
+      ...jobCardAlters,
+      ...jobCardConstraints,
       `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS expense_category TEXT`,
       `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS expense_subcategory TEXT`,
       `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS meter_start_reading DECIMAL(10,1)`,
