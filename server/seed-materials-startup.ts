@@ -4,7 +4,12 @@
  */
 import { db } from "./db";
 import { materialsMaster, serviceTypes } from "@shared/schema";
+import { sql } from "drizzle-orm";
 import { log } from "./index";
+import { MATERIALS_PAGE2 } from "./materials-data-page2";
+import { MATERIALS_PAGE3 } from "./materials-data-page3";
+import { MATERIALS_PAGE4 } from "./materials-data-page4";
+import { MATERIALS_PAGE5 } from "./materials-data-page5";
 
 interface MaterialRow {
   materialCode: string;
@@ -16,9 +21,8 @@ interface MaterialRow {
   customerSalePrice: string;
 }
 
-// Full Customer Price List (Jan 2026) — 70 parts
-const ALL_MATERIALS: MaterialRow[] = [
-  // ── Page 1 ──
+// Original 70 parts (Page 1 of Price List)
+const MATERIALS_PAGE1: MaterialRow[] = [
   { materialCode: "17225", hsnCode: "73181500", materialDescription: "M3X6 SS AHS", gstRate: "18", customerBasicPrice: "5.76", gstAmount: "1.04", customerSalePrice: "6.79" },
   { materialCode: "17226", hsnCode: "73181600", materialDescription: "M3X8 SS AHS", gstRate: "18", customerBasicPrice: "6.38", gstAmount: "1.15", customerSalePrice: "7.53" },
   { materialCode: "17227", hsnCode: "73181600", materialDescription: "M4 Lock Nut", gstRate: "18", customerBasicPrice: "4.60", gstAmount: "0.83", customerSalePrice: "5.43" },
@@ -54,7 +58,6 @@ const ALL_MATERIALS: MaterialRow[] = [
   { materialCode: "17336", hsnCode: "85366990", materialDescription: "2 Pin Plug", gstRate: "18", customerBasicPrice: "56.52", gstAmount: "10.17", customerSalePrice: "66.69" },
   { materialCode: "17398", hsnCode: "73181600", materialDescription: "M3x60 SS AHS", gstRate: "18", customerBasicPrice: "51.68", gstAmount: "9.30", customerSalePrice: "60.98" },
   { materialCode: "17399", hsnCode: "73181500", materialDescription: "M6x80 SS AHS", gstRate: "18", customerBasicPrice: "40.72", gstAmount: "7.33", customerSalePrice: "48.04" },
-  // ── Page 2 ──
   { materialCode: "17400", hsnCode: "73181500", materialDescription: "M4x08 SS AHS", gstRate: "18", customerBasicPrice: "5.19", gstAmount: "0.93", customerSalePrice: "6.12" },
   { materialCode: "17401", hsnCode: "73181500", materialDescription: "M4x40 SS AHS", gstRate: "18", customerBasicPrice: "10.27", gstAmount: "1.85", customerSalePrice: "12.11" },
   { materialCode: "17403", hsnCode: "73181500", materialDescription: "M3x10 SS Pan Star Screw", gstRate: "18", customerBasicPrice: "1.57", gstAmount: "0.28", customerSalePrice: "1.85" },
@@ -92,18 +95,29 @@ const ALL_MATERIALS: MaterialRow[] = [
   { materialCode: "18126", hsnCode: "40169340", materialDescription: "Rectangle Open Grommet 38mmx28mm", gstRate: "18", customerBasicPrice: "42.39", gstAmount: "7.63", customerSalePrice: "50.02" },
 ];
 
+// Merge ALL pages into one master list
+const ALL_MATERIALS: MaterialRow[] = [
+  ...MATERIALS_PAGE1,
+  ...MATERIALS_PAGE2,
+  ...MATERIALS_PAGE3,
+  ...MATERIALS_PAGE4,
+  ...MATERIALS_PAGE5,
+];
+
 const DEFAULT_SERVICE_TYPES = ["Paid", "Warranty", "Insurance"];
 
 export async function seedMaterials() {
   try {
-    // Check if already seeded — skip if materials exist
-    const existing = await db.select({ id: materialsMaster.id }).from(materialsMaster).limit(1);
-    if (existing.length > 0) {
-      log(`Materials already seeded (${existing.length}+ rows). Skipping.`, "seed");
+    // Count existing materials — reseed if count is below expected
+    const countResult = await db.select({ count: sql<number>`count(*)` }).from(materialsMaster);
+    const existingCount = Number(countResult[0]?.count ?? 0);
+
+    if (existingCount >= ALL_MATERIALS.length) {
+      log(`Materials already seeded (${existingCount} rows, expected ${ALL_MATERIALS.length}). Skipping.`, "seed");
       return;
     }
 
-    log(`Seeding ${ALL_MATERIALS.length} materials...`, "seed");
+    log(`Seeding ${ALL_MATERIALS.length} materials (currently ${existingCount} in DB)...`, "seed");
     for (const mat of ALL_MATERIALS) {
       await db.insert(materialsMaster).values(mat).onConflictDoUpdate({
         target: materialsMaster.materialCode,
@@ -124,7 +138,7 @@ export async function seedMaterials() {
 
     log(`Seeded ${ALL_MATERIALS.length} materials + ${DEFAULT_SERVICE_TYPES.length} service types.`, "seed");
   } catch (err: any) {
-    // Don't crash server if seed fails — log and continue
     log(`Materials seed warning: ${err.message}`, "seed");
   }
 }
+
