@@ -93,7 +93,7 @@ export async function registerRoutes(app: Express) {
   });
 
   // ── Users ────────────────────────────────────────────────────────────────
-  app.get("/api/users", jwtAuth, requireRole("admin"), async (_req: Request, res: Response) => {
+  app.get("/api/users", jwtAuth, async (_req: Request, res: Response) => {
     const usersList = await storage.getAllUsers();
     res.json(usersList);
   });
@@ -108,16 +108,16 @@ export async function registerRoutes(app: Express) {
     res.status(204).send();
   });
 
-  // ── Materials Master (admin only) ─────────────────────────────────────────
-  app.get("/api/materials", jwtAuth, requireRole("admin"), async (_req: Request, res: Response) => {
+  // ── Materials Master ─────────────────────────────────────────
+  app.get("/api/materials", jwtAuth, async (_req: Request, res: Response) => {
     res.json(await storage.getAllMaterials());
   });
 
-  app.get("/api/materials/descriptions", jwtAuth, requireRole("admin"), async (_req: Request, res: Response) => {
+  app.get("/api/materials/descriptions", jwtAuth, async (_req: Request, res: Response) => {
     res.json(await storage.getMaterialDescriptions());
   });
 
-  app.get("/api/materials/by-description/:desc", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
+  app.get("/api/materials/by-description/:desc", jwtAuth, async (req: Request, res: Response) => {
     const desc = decodeURIComponent(String(req.params.desc));
     res.json(await storage.getMaterialsByDescription(desc));
   });
@@ -193,8 +193,8 @@ export async function registerRoutes(app: Express) {
     res.status(204).send();
   });
 
-  // ── Inventory (admin only) ───────────────────────────────────────────────
-  app.get("/api/inventory", jwtAuth, requireRole("admin"), async (_req: Request, res: Response) => {
+  // ── Inventory ───────────────────────────────────────────────
+  app.get("/api/inventory", jwtAuth, async (_req: Request, res: Response) => {
     res.json(await storage.getAllInventory());
   });
 
