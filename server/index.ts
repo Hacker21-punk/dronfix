@@ -189,6 +189,34 @@ async function runMigrations() {
       }
     }
 
+    // ── New columns on service_requests ────────────────────────────────────
+    const serviceRequestAlters = [
+      `ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS complaint_type TEXT DEFAULT 'general_service' NOT NULL`,
+      `ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS customer_statement TEXT`,
+      `ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS model_details TEXT`,
+      `ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS service_type_detail TEXT`,
+      `ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS insurance_applicable BOOLEAN DEFAULT false`,
+      `ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS insurance_company TEXT`,
+      `ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS uin_number TEXT`,
+      `ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS doc_number TEXT`,
+      `ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS crm_ticket_number TEXT`,
+    ];
+
+    // ── Engineer counters table ──────────────────────────────────────────
+    const engineerCounterTable = [
+      `CREATE TABLE IF NOT EXISTS engineer_counters (
+        id SERIAL PRIMARY KEY,
+        engineer_id TEXT NOT NULL REFERENCES users(id),
+        counter INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(engineer_id)
+      )`,
+    ];
+
+    // ── New columns on users ────────────────────────────────────────────
+    const userAlters = [
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS user_initials TEXT`,
+    ];
+
     // ── New columns on job_cards ──────────────────────────────────────────
     const jobCardAlters = [
       `ALTER TABLE job_cards ADD COLUMN IF NOT EXISTS crm_ticket_number TEXT`,
@@ -208,6 +236,9 @@ async function runMigrations() {
 
     // ── Existing expense column migrations ───────────────────────────────
     const alterStatements = [
+      ...serviceRequestAlters,
+      ...engineerCounterTable,
+      ...userAlters,
       ...jobCardAlters,
       ...jobCardConstraints,
       `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS expense_category TEXT`,

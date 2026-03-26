@@ -12,7 +12,6 @@ export const serviceStatusEnum = pgEnum("service_status", ["pending", "open", "a
 export const shippingStatusEnum = pgEnum("shipping_status", ["shipped", "in_transit", "delivered"]);
 export const modeOfTravelEnum = pgEnum("mode_of_travel", ["Train", "Bus", "Auto", "Flight"]);
 export const documentTypeEnum = pgEnum("document_type", ["job_sheet", "feedback", "crash_report", "audit_report", "log_report"]);
-export const complaintTypeEnum = pgEnum("complaint_type", ["general_service", "preventive_maintenance", "customer_statement"]);
 
 // ─── 0. MATERIALS MASTER (Price List) ────────────────────────────────────────
 export const materialsMaster = pgTable("materials_master", {

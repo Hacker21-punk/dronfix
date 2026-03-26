@@ -276,20 +276,6 @@ export async function registerRoutes(app: Express) {
 
       const request = await storage.createServiceRequest(requestData);
 
-      // Create parts_requested if provided
-      if (partsRequestedData && Array.isArray(partsRequestedData)) {
-        try {
-          await storage.addPartsRequested(request.id, partsRequestedData.map((p: any) => ({
-            itemName: p.materialDescription || p.itemName || '',
-            materialDescription: p.materialDescription || '',
-            partNumber: p.partNumber || '',
-            quantity: p.quantity || 1,
-          })));
-        } catch (partsErr: any) {
-          console.error("[PARTS REQUESTED INSERT FAILED]", partsErr.message);
-        }
-      }
-
       res.status(201).json(request);
     } catch (err: any) {
       console.error("[CREATE SERVICE REQUEST ERROR]", err);
