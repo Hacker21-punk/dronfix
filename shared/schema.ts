@@ -59,7 +59,7 @@ export const serviceRequests = pgTable("service_requests", {
   district: text("district"),
   contactDetails: text("contact_details").notNull(),
   // Complaint — dropdown instead of free text
-  complaintType: complaintTypeEnum("complaint_type").default("general_service").notNull(),
+  complaintType: text("complaint_type").default("general_service").notNull(),
   complaint: text("complaint").notNull().default(""),
   customerStatement: text("customer_statement"),
   // Model & classification

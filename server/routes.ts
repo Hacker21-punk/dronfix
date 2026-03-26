@@ -241,26 +241,15 @@ export async function registerRoutes(app: Express) {
 
   app.post("/api/service-requests", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
     try {
-      // Auto-generate CRM ticket number (safe — fallback if jobCards table issue)
-      let crmTicketNumber: string;
-      try {
-        crmTicketNumber = await storage.generateCrmTicket();
-      } catch {
-        const now = new Date();
-        crmTicketNumber = `DRN-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}-${String(Math.floor(100000 + Math.random() * 900000))}`;
-      }
-
-      // Extract only known fields for the insert
       const {
         pilotName, droneNumber, serialNumber, address, pincode, state, district,
         contactDetails, complaintType, complaint, customerStatement, modelDetails,
         serviceType, serviceTypeDetail, insuranceApplicable, insuranceCompany,
-        uinNumber, assignedEngineerId, tentativeServiceDate,
+        uinNumber, crmTicketNumber, assignedEngineerId, tentativeServiceDate,
         partsRequested: partsRequestedData,
       } = req.body;
 
-      // Full request data with all new columns
-      const fullRequestData: any = {
+      const requestData: any = {
         pilotName,
         droneNumber,
         serialNumber,
@@ -268,43 +257,24 @@ export async function registerRoutes(app: Express) {
         contactDetails,
         serviceType: serviceType || "L1",
         complaint: complaint || "",
-        crmTicketNumber,
       };
 
-      if (pincode) fullRequestData.pincode = pincode;
-      if (state) fullRequestData.state = state;
-      if (district) fullRequestData.district = district;
-      if (complaintType) fullRequestData.complaintType = complaintType;
-      if (customerStatement) fullRequestData.customerStatement = customerStatement;
-      if (modelDetails) fullRequestData.modelDetails = modelDetails;
-      if (serviceTypeDetail) fullRequestData.serviceTypeDetail = serviceTypeDetail;
-      if (typeof insuranceApplicable === "boolean") fullRequestData.insuranceApplicable = insuranceApplicable;
-      if (insuranceCompany) fullRequestData.insuranceCompany = insuranceCompany;
-      if (uinNumber) fullRequestData.uinNumber = uinNumber;
-      if (assignedEngineerId) fullRequestData.assignedEngineerId = assignedEngineerId;
-      if (tentativeServiceDate) fullRequestData.tentativeServiceDate = new Date(tentativeServiceDate);
+      // Add optional fields only if present
+      if (pincode) requestData.pincode = pincode;
+      if (state) requestData.state = state;
+      if (district) requestData.district = district;
+      if (complaintType) requestData.complaintType = complaintType;
+      if (customerStatement) requestData.customerStatement = customerStatement;
+      if (modelDetails) requestData.modelDetails = modelDetails;
+      if (serviceTypeDetail) requestData.serviceTypeDetail = serviceTypeDetail;
+      if (typeof insuranceApplicable === "boolean") requestData.insuranceApplicable = insuranceApplicable;
+      if (insuranceCompany) requestData.insuranceCompany = insuranceCompany;
+      if (uinNumber) requestData.uinNumber = uinNumber;
+      if (crmTicketNumber) requestData.crmTicketNumber = crmTicketNumber;
+      if (assignedEngineerId) requestData.assignedEngineerId = assignedEngineerId;
+      if (tentativeServiceDate) requestData.tentativeServiceDate = new Date(tentativeServiceDate);
 
-      let request: any;
-      try {
-        request = await storage.createServiceRequest(fullRequestData);
-      } catch (insertErr: any) {
-        // If new columns don't exist yet in production, fallback to base columns only
-        console.error("[INSERT FULL FAILED, trying base-only]", insertErr.message);
-        const baseRequestData: any = {
-          pilotName,
-          droneNumber,
-          serialNumber,
-          address,
-          contactDetails,
-          serviceType: serviceType || "L1",
-          complaint: complaint || "",
-        };
-        if (pincode) baseRequestData.pincode = pincode;
-        if (state) baseRequestData.state = state;
-        if (district) baseRequestData.district = district;
-        if (assignedEngineerId) baseRequestData.assignedEngineerId = assignedEngineerId;
-        request = await storage.createServiceRequest(baseRequestData);
-      }
+      const request = await storage.createServiceRequest(requestData);
 
       // Create parts_requested if provided
       if (partsRequestedData && Array.isArray(partsRequestedData)) {

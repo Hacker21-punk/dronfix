@@ -427,6 +427,7 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [insuranceApplicable, setInsuranceApplicable] = useState<string>("");
   const [insuranceCompany, setInsuranceCompany] = useState("");
   const [uinNumber, setUinNumber] = useState("");
+  const [crmTicketNumber, setCrmTicketNumber] = useState("");
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   // Materials multi-select
@@ -544,6 +545,7 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     if (modelDetails === "Others" && !otherModelDetails.trim()) errors.push("Please specify model details");
     if (serviceTypeDetails.length === 0) errors.push("At least one Service Type must be selected");
     if (!uinNumber.trim()) errors.push("UIN Number is required");
+    if (!crmTicketNumber.trim()) errors.push("CRM Ticket Number is required");
     if (complaintType === "customer_statement" && !customerStatement.trim()) errors.push("Customer Statement is required");
     if (serviceTypeDetails.includes("Insurance") && !insuranceApplicable) errors.push("Please select Insurance Applicable");
     if (insuranceApplicable === "yes" && !insuranceCompany) errors.push("Insurance Company is required");
@@ -565,6 +567,7 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       insuranceApplicable: serviceTypeDetails.includes("Insurance") && insuranceApplicable === "yes",
       insuranceCompany: insuranceApplicable === "yes" ? insuranceCompany : undefined,
       uinNumber: uinNumber.trim() || undefined,
+      crmTicketNumber: crmTicketNumber.trim() || undefined,
       partsRequested: selectedParts.length > 0 ? selectedParts : undefined,
     };
     if (!submitData.assignedEngineerId) {
@@ -577,7 +580,7 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         setComplaintType("general_service"); setCustomerStatement("");
         setModelDetails(""); setOtherModelDetails(""); setServiceTypeDetails([]);
         setInsuranceApplicable(""); setInsuranceCompany("");
-        setUinNumber(""); setSelectedParts([]); setValidationErrors([]);
+        setUinNumber(""); setCrmTicketNumber(""); setSelectedParts([]); setValidationErrors([]);
         onOpenChange(false);
       }
     });
@@ -674,9 +677,14 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           </div>
 
           {/* CRM Ticket Number */}
-          <div className="flex items-center gap-3 px-3 py-2 bg-muted/50 rounded-lg border border-dashed">
-            <span className="text-sm font-medium text-muted-foreground">CRM Ticket No.</span>
-            <span className="text-sm font-mono text-blue-600 dark:text-blue-400">Auto-generated on submit (DRN-YYYYMM-XXXXXX)</span>
+          <div className="space-y-2">
+            <Label>CRM Ticket Number *</Label>
+            <Input
+              value={crmTicketNumber}
+              onChange={(e) => setCrmTicketNumber(e.target.value)}
+              placeholder="e.g. DRN-202603-123456"
+              data-testid="input-crm-ticket"
+            />
           </div>
 
           {/* Model Details */}
