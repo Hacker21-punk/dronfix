@@ -202,11 +202,24 @@ async function runMigrations() {
       `ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS crm_ticket_number TEXT`,
     ];
 
+    // ── Parts Requested table ──────────────────────────────────────────
+    const partsRequestedTable = [
+      `CREATE TABLE IF NOT EXISTS parts_requested (
+        id SERIAL PRIMARY KEY,
+        service_request_id INTEGER NOT NULL REFERENCES service_requests(id),
+        item_name TEXT NOT NULL,
+        material_description TEXT,
+        part_number TEXT,
+        quantity INTEGER NOT NULL DEFAULT 1
+      )`,
+    ];
+
     // ── Engineer counters table ──────────────────────────────────────────
     const engineerCounterTable = [
       `CREATE TABLE IF NOT EXISTS engineer_counters (
         id SERIAL PRIMARY KEY,
         engineer_id TEXT NOT NULL REFERENCES users(id),
+        initial TEXT NOT NULL DEFAULT '',
         counter INTEGER NOT NULL DEFAULT 0,
         UNIQUE(engineer_id)
       )`,
@@ -237,6 +250,7 @@ async function runMigrations() {
     // ── Existing expense column migrations ───────────────────────────────
     const alterStatements = [
       ...serviceRequestAlters,
+      ...partsRequestedTable,
       ...engineerCounterTable,
       ...userAlters,
       ...jobCardAlters,
