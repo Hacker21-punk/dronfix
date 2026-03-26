@@ -249,16 +249,6 @@ export async function registerRoutes(app: Express) {
     }
   });
 
-  // Diagnostic route for DB issues on Render
-  app.get("/api/debug-detail/:id", async (req: Request, res: Response) => {
-    try {
-      const detail = await storage.getServiceRequestWithDetails(Number(req.params.id));
-      res.json(detail);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message, stack: err.stack, name: err.name });
-    }
-  });
-
   app.post("/api/service-requests", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
     try {
       const {
