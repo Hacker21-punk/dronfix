@@ -51,8 +51,8 @@ export function useCreateServiceRequest() {
       queryClient.invalidateQueries({ queryKey: [api.serviceRequests.list.path] });
       toast({ title: "Success", description: "Service request created" });
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to create request", variant: "destructive" });
+    onError: (err: any) => {
+      toast({ title: "Error", description: err?.message || "Failed to create request", variant: "destructive" });
     },
   });
 }

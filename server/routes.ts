@@ -243,14 +243,46 @@ export async function registerRoutes(app: Express) {
     try {
       // Auto-generate CRM ticket number
       const crmTicketNumber = await storage.generateCrmTicket();
-      const requestData = { ...req.body, crmTicketNumber };
-      // Remove partsRequested from the main insert
-      delete requestData.partsRequested;
+
+      // Extract only known fields for the insert
+      const {
+        pilotName, droneNumber, serialNumber, address, pincode, state, district,
+        contactDetails, complaintType, complaint, customerStatement, modelDetails,
+        serviceType, serviceTypeDetail, insuranceApplicable, insuranceCompany,
+        uinNumber, assignedEngineerId, tentativeServiceDate,
+        partsRequested: partsRequestedData, // separate from DB insert
+      } = req.body;
+
+      const requestData: any = {
+        pilotName,
+        droneNumber,
+        serialNumber,
+        address,
+        contactDetails,
+        serviceType: serviceType || "L1",
+        complaint: complaint || "",
+        crmTicketNumber,
+      };
+
+      // Add optional fields only if present
+      if (pincode) requestData.pincode = pincode;
+      if (state) requestData.state = state;
+      if (district) requestData.district = district;
+      if (complaintType) requestData.complaintType = complaintType;
+      if (customerStatement) requestData.customerStatement = customerStatement;
+      if (modelDetails) requestData.modelDetails = modelDetails;
+      if (serviceTypeDetail) requestData.serviceTypeDetail = serviceTypeDetail;
+      if (typeof insuranceApplicable === "boolean") requestData.insuranceApplicable = insuranceApplicable;
+      if (insuranceCompany) requestData.insuranceCompany = insuranceCompany;
+      if (uinNumber) requestData.uinNumber = uinNumber;
+      if (assignedEngineerId) requestData.assignedEngineerId = assignedEngineerId;
+      if (tentativeServiceDate) requestData.tentativeServiceDate = new Date(tentativeServiceDate);
+
       const request = await storage.createServiceRequest(requestData);
 
       // Create parts_requested if provided
-      if (req.body.partsRequested && Array.isArray(req.body.partsRequested)) {
-        await storage.addPartsRequested(request.id, req.body.partsRequested.map((p: any) => ({
+      if (partsRequestedData && Array.isArray(partsRequestedData)) {
+        await storage.addPartsRequested(request.id, partsRequestedData.map((p: any) => ({
           itemName: p.materialDescription || p.itemName || '',
           materialDescription: p.materialDescription || '',
           partNumber: p.partNumber || '',
@@ -260,7 +292,8 @@ export async function registerRoutes(app: Express) {
 
       res.status(201).json(request);
     } catch (err: any) {
-      res.status(400).json({ message: err.message });
+      console.error("[CREATE SERVICE REQUEST ERROR]", err);
+      res.status(400).json({ message: err.message || "Unknown error creating service request" });
     }
   });
 
