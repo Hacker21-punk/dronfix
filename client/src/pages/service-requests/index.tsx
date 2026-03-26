@@ -422,10 +422,12 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [complaintType, setComplaintType] = useState<string>("general_service");
   const [customerStatement, setCustomerStatement] = useState("");
   const [modelDetails, setModelDetails] = useState("");
+  const [otherModelDetails, setOtherModelDetails] = useState("");
   const [serviceTypeDetails, setServiceTypeDetails] = useState<string[]>([]);
   const [insuranceApplicable, setInsuranceApplicable] = useState<string>("");
   const [insuranceCompany, setInsuranceCompany] = useState("");
   const [uinNumber, setUinNumber] = useState("");
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   // Materials multi-select
   const [materialsData, setMaterialsData] = useState<any[]>([]);
@@ -536,16 +538,33 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   ).slice(0, 10);
 
   const onSubmit = (data: any) => {
+    // Frontend mandatory validation
+    const errors: string[] = [];
+    if (!modelDetails) errors.push("Model Details is required");
+    if (modelDetails === "Others" && !otherModelDetails.trim()) errors.push("Please specify model details");
+    if (serviceTypeDetails.length === 0) errors.push("At least one Service Type must be selected");
+    if (!uinNumber.trim()) errors.push("UIN Number is required");
+    if (complaintType === "customer_statement" && !customerStatement.trim()) errors.push("Customer Statement is required");
+    if (serviceTypeDetails.includes("Insurance") && !insuranceApplicable) errors.push("Please select Insurance Applicable");
+    if (insuranceApplicable === "yes" && !insuranceCompany) errors.push("Insurance Company is required");
+
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+    setValidationErrors([]);
+
+    const finalModelDetails = modelDetails === "Others" ? otherModelDetails.trim() : modelDetails;
     const submitData = {
       ...data,
       complaintType,
-      complaint: complaintType === "customer_statement" ? customerStatement : complaintType.replace("_", " "),
+      complaint: complaintType === "customer_statement" ? customerStatement : complaintType.replace(/_/g, " "),
       customerStatement: complaintType === "customer_statement" ? customerStatement : undefined,
-      modelDetails: modelDetails || undefined,
+      modelDetails: finalModelDetails || undefined,
       serviceTypeDetail: serviceTypeDetails.join(",") || undefined,
-      insuranceApplicable: serviceTypeDetails.includes("Insurance") ? insuranceApplicable === "yes" : false,
+      insuranceApplicable: serviceTypeDetails.includes("Insurance") && insuranceApplicable === "yes",
       insuranceCompany: insuranceApplicable === "yes" ? insuranceCompany : undefined,
-      uinNumber: uinNumber || undefined,
+      uinNumber: uinNumber.trim() || undefined,
       partsRequested: selectedParts.length > 0 ? selectedParts : undefined,
     };
     if (!submitData.assignedEngineerId) {
@@ -556,9 +575,9 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         form.reset();
         setPincodeStatus("idle"); setPincodeMsg("");
         setComplaintType("general_service"); setCustomerStatement("");
-        setModelDetails(""); setServiceTypeDetails([]);
+        setModelDetails(""); setOtherModelDetails(""); setServiceTypeDetails([]);
         setInsuranceApplicable(""); setInsuranceCompany("");
-        setUinNumber(""); setSelectedParts([]);
+        setUinNumber(""); setSelectedParts([]); setValidationErrors([]);
         onOpenChange(false);
       }
     });
@@ -571,6 +590,14 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           <DialogTitle>Create New Service Request</DialogTitle>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+          {/* Validation Errors */}
+          {validationErrors.length > 0 && (
+            <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 space-y-1">
+              {validationErrors.map((err, i) => (
+                <p key={i} className="text-xs text-destructive">• {err}</p>
+              ))}
+            </div>
+          )}
           {/* Customer & Contact Info */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -649,8 +676,8 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           {/* Model Details */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Model Details</Label>
-              <Select value={modelDetails} onValueChange={setModelDetails}>
+              <Label>Model Details *</Label>
+              <Select value={modelDetails} onValueChange={(v) => { setModelDetails(v); if (v !== "Others") setOtherModelDetails(""); }}>
                 <SelectTrigger data-testid="select-model-details"><SelectValue placeholder="Select model" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="E10">E10</SelectItem>
@@ -659,16 +686,27 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                   <SelectItem value="Others">Others</SelectItem>
                 </SelectContent>
               </Select>
+              {modelDetails === "Others" && (
+                <div className="mt-2">
+                  <Label className="text-xs text-muted-foreground">Please specify:</Label>
+                  <Input
+                    value={otherModelDetails}
+                    onChange={(e) => setOtherModelDetails(e.target.value)}
+                    placeholder="Enter model name"
+                    className="mt-1"
+                  />
+                </div>
+              )}
             </div>
             <div className="space-y-2">
-              <Label>UIN Number</Label>
+              <Label>UIN Number *</Label>
               <Input value={uinNumber} onChange={(e) => setUinNumber(e.target.value)} placeholder="Enter UIN" data-testid="input-uin" />
             </div>
           </div>
 
           {/* Service Type Checkboxes */}
           <div className="space-y-2">
-            <Label>Service Type</Label>
+            <Label>Service Type *</Label>
             <div className="flex gap-6 py-1">
               {["Warranty", "Paid", "Insurance"].map(type => (
                 <label key={type} className="flex items-center gap-2 cursor-pointer">
@@ -688,7 +726,7 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           {serviceTypeDetails.includes("Insurance") && (
             <div className="grid grid-cols-2 gap-4 pl-4 border-l-2 border-blue-200">
               <div className="space-y-2">
-                <Label>Insurance Applicable</Label>
+                <Label>Insurance Applicable *</Label>
                 <Select value={insuranceApplicable} onValueChange={setInsuranceApplicable}>
                   <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
@@ -699,7 +737,7 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
               </div>
               {insuranceApplicable === "yes" && (
                 <div className="space-y-2">
-                  <Label>Insurance Company</Label>
+                  <Label>Insurance Company *</Label>
                   <Select value={insuranceCompany} onValueChange={setInsuranceCompany}>
                     <SelectTrigger><SelectValue placeholder="Select company" /></SelectTrigger>
                     <SelectContent>
