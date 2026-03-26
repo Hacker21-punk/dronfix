@@ -228,15 +228,25 @@ export async function registerRoutes(app: Express) {
 
   // ── Service Requests ─────────────────────────────────────────────────────
   app.get("/api/service-requests", jwtAuth, async (req: Request, res: Response) => {
-    const { role, userId } = (req as any).user;
-    const requests = await storage.getAllServiceRequests(role, userId);
-    res.json(requests);
+    try {
+      const { role, userId } = (req as any).user;
+      const requests = await storage.getAllServiceRequests(role, userId);
+      res.json(requests);
+    } catch (err: any) {
+      console.error("[GET SERVICE REQUESTS ERROR]", err.message);
+      res.status(500).json({ message: err.message || "Failed to fetch service requests" });
+    }
   });
 
   app.get("/api/service-requests/:id", jwtAuth, async (req: Request, res: Response) => {
-    const detail = await storage.getServiceRequestWithDetails(Number(req.params.id));
-    if (!detail) return res.status(404).json({ message: "Not found" });
-    res.json(detail);
+    try {
+      const detail = await storage.getServiceRequestWithDetails(Number(req.params.id));
+      if (!detail) return res.status(404).json({ message: "Not found" });
+      res.json(detail);
+    } catch (err: any) {
+      console.error("[GET SERVICE REQUEST DETAIL ERROR]", err.message);
+      res.status(500).json({ message: err.message || "Failed to fetch service request details" });
+    }
   });
 
   app.post("/api/service-requests", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {

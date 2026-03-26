@@ -59,14 +59,24 @@ export default function ServiceRequestDetail() {
   const requestId = Number(id);
   const [, setLocation] = useLocation();
   
-  const { data: request, isLoading } = useServiceRequest(requestId);
+  const { data: request, isLoading, isError, error, refetch } = useServiceRequest(requestId);
   const { data: profile } = useCurrentUser();
   const updateMutation = useUpdateServiceRequest();
   const uploadDocumentMutation = useUploadDocument();
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   
-  if (isLoading || !request) {
+  if (isLoading) {
     return <div className="p-10 text-center animate-pulse">Loading request details...</div>;
+  }
+
+  if (isError || !request) {
+    return (
+      <div className="p-10 text-center space-y-4">
+        <p className="text-destructive font-medium">Failed to load request details</p>
+        <p className="text-sm text-muted-foreground">{(error as any)?.message || "Unknown error"}</p>
+        <Button variant="outline" onClick={() => refetch()}>Try Again</Button>
+      </div>
+    );
   }
 
   const role = profile?.role || 'engineer';
