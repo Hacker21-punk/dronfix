@@ -19,6 +19,7 @@ import {
   serviceCompletions,
   materialsMaster,
   serviceTypes,
+  engineerCounters,
   type InsertInventory,
   type InsertServiceRequest,
   type InsertExpense,
@@ -67,7 +68,10 @@ export interface IStorage {
   deleteServiceRequest(id: number): Promise<void>;
 
   // Parts Requested
-  addPartsRequested(serviceRequestId: number, items: { itemName: string; quantity: number }[]): Promise<any[]>;
+  addPartsRequested(serviceRequestId: number, items: { itemName: string; materialDescription?: string; partNumber?: string; quantity: number }[]): Promise<any[]>;
+
+  // Doc Number Generation
+  generateDocNumber(engineerId: string): Promise<string>;
 
   // Parts Consumed
   consumePart(serviceRequestId: number, inventoryId: number, quantity: number): Promise<any>;
@@ -410,10 +414,38 @@ export class DatabaseStorage implements IStorage {
   }
 
   async assignEngineer(id: number, engineerId: string) {
+    // Generate doc number for this assignment
+    const docNumber = await this.generateDocNumber(engineerId);
     const [request] = await db.update(serviceRequests)
-      .set({ assignedEngineerId: engineerId })
+      .set({ assignedEngineerId: engineerId, docNumber })
       .where(eq(serviceRequests.id, id)).returning();
     return request;
+  }
+
+  async generateDocNumber(engineerId: string): Promise<string> {
+    // Get engineer name to extract initial
+    const engineer = await this.getUserById(engineerId);
+    if (!engineer) throw new Error("Engineer not found");
+    const initial = (engineer.name || "E").charAt(0).toUpperCase();
+
+    // Upsert counter
+    const [existing] = await db.select().from(engineerCounters)
+      .where(eq(engineerCounters.engineerId, engineerId)).limit(1);
+
+    if (existing) {
+      const newCount = existing.counter + 1;
+      await db.update(engineerCounters)
+        .set({ counter: newCount })
+        .where(eq(engineerCounters.id, existing.id));
+      return `${initial}-${newCount}`;
+    } else {
+      await db.insert(engineerCounters).values({
+        engineerId,
+        initial,
+        counter: 1,
+      });
+      return `${initial}-1`;
+    }
   }
 
   async deleteServiceRequest(id: number) {
@@ -435,17 +467,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── Parts Requested ────────────────────────────────────────────────────────
-  async addPartsRequested(serviceRequestId: number, items: { itemName: string; quantity: number }[]) {
-    const values = items.map(item => ({ serviceRequestId, ...item }));
+  async addPartsRequested(serviceRequestId: number, items: { itemName: string; materialDescription?: string; partNumber?: string; quantity: number }[]) {
+    const values = items.map(item => ({
+      serviceRequestId,
+      itemName: item.itemName,
+      materialDescription: item.materialDescription || item.itemName,
+      partNumber: item.partNumber || null,
+      quantity: item.quantity,
+    }));
     return db.insert(partsRequested).values(values).returning();
   }
 
   // ── Parts Consumed (with inventory transaction) ────────────────────────────
   async consumePart(serviceRequestId: number, inventoryId: number, quantity: number) {
-    // Check stock
+    // Check stock - allow negative stock
     const [item] = await db.select().from(inventory).where(eq(inventory.id, inventoryId));
     if (!item) throw new Error("Inventory item not found");
-    if (item.quantity < quantity) throw new Error("Insufficient stock");
+    // Removed insufficient stock check - stock can go negative
 
     // Deduct stock
     await db.update(inventory).set({

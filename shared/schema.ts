@@ -12,6 +12,7 @@ export const serviceStatusEnum = pgEnum("service_status", ["pending", "open", "a
 export const shippingStatusEnum = pgEnum("shipping_status", ["shipped", "in_transit", "delivered"]);
 export const modeOfTravelEnum = pgEnum("mode_of_travel", ["Train", "Bus", "Auto", "Flight"]);
 export const documentTypeEnum = pgEnum("document_type", ["job_sheet", "feedback", "crash_report", "audit_report", "log_report"]);
+export const complaintTypeEnum = pgEnum("complaint_type", ["general_service", "preventive_maintenance", "customer_statement"]);
 
 // ─── 0. MATERIALS MASTER (Price List) ────────────────────────────────────────
 export const materialsMaster = pgTable("materials_master", {
@@ -57,8 +58,22 @@ export const serviceRequests = pgTable("service_requests", {
   state: text("state"),
   district: text("district"),
   contactDetails: text("contact_details").notNull(),
-  complaint: text("complaint").notNull(),
+  // Complaint — dropdown instead of free text
+  complaintType: complaintTypeEnum("complaint_type").default("general_service").notNull(),
+  complaint: text("complaint").notNull().default(""),
+  customerStatement: text("customer_statement"),
+  // Model & classification
+  modelDetails: text("model_details"),          // E10, E10P, DHQ4, Others
   serviceType: serviceTypeEnum("service_type").notNull(),
+  serviceTypeDetail: text("service_type_detail"), // Warranty,Paid,Insurance (comma-sep)
+  // Insurance
+  insuranceApplicable: boolean("insurance_applicable").default(false),
+  insuranceCompany: text("insurance_company"),
+  // UIN & Doc
+  uinNumber: text("uin_number"),
+  docNumber: text("doc_number"),
+  crmTicketNumber: text("crm_ticket_number"),
+  // Status & assignment
   status: serviceStatusEnum("status").default("pending").notNull(),
   assignedEngineerId: text("assigned_engineer_id").references(() => users.id),
   tentativeServiceDate: timestamp("tentative_service_date"),
@@ -71,7 +86,17 @@ export const partsRequested = pgTable("parts_requested", {
   id: serial("id").primaryKey(),
   serviceRequestId: integer("service_request_id").notNull().references(() => serviceRequests.id),
   itemName: text("item_name").notNull(),
+  materialDescription: text("material_description"),
+  partNumber: text("part_number"),
   quantity: integer("quantity").notNull().default(1),
+});
+
+// ─── 3b. ENGINEER COUNTERS (for Doc Number generation) ──────────────────────
+export const engineerCounters = pgTable("engineer_counters", {
+  id: serial("id").primaryKey(),
+  engineerId: text("engineer_id").notNull().references(() => users.id).unique(),
+  initial: text("initial").notNull(),
+  counter: integer("counter").notNull().default(0),
 });
 
 // ─── 4. PARTS CONSUMED ──────────────────────────────────────────────────────
@@ -404,6 +429,13 @@ export const serviceCompletionsRelations = relations(serviceCompletions, ({ one 
   }),
 }));
 
+export const engineerCountersRelations = relations(engineerCounters, ({ one }) => ({
+  engineer: one(users, {
+    fields: [engineerCounters.engineerId],
+    references: [users.id],
+  }),
+}));
+
 // ─── Insert Schemas ──────────────────────────────────────────────────────────
 export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true, updatedAt: true });
 export const insertServiceRequestSchema = createInsertSchema(serviceRequests).omit({
@@ -411,6 +443,7 @@ export const insertServiceRequestSchema = createInsertSchema(serviceRequests).om
   status: true,
   closedAt: true,
   createdAt: true,
+  docNumber: true,
 });
 export const insertPartsRequestedSchema = createInsertSchema(partsRequested).omit({ id: true });
 export const insertPartsConsumedSchema = createInsertSchema(partsConsumed).omit({ id: true, timestamp: true });

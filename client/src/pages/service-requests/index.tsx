@@ -413,10 +413,38 @@ function DeleteRequestButton({ id }: { id: number }) {
 
 function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { mutate, isPending } = useCreateServiceRequest();
-  const { data: users } = useUsers();
-  const engineers = users?.filter((u: any) => u.role === 'engineer') || [];
+  const { data: usersData } = useUsers();
+  const engineers = usersData?.filter((u: any) => u.role === 'engineer') || [];
   const [pincodeStatus, setPincodeStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [pincodeMsg, setPincodeMsg] = useState("");
+
+  // New fields state
+  const [complaintType, setComplaintType] = useState<string>("general_service");
+  const [customerStatement, setCustomerStatement] = useState("");
+  const [modelDetails, setModelDetails] = useState("");
+  const [serviceTypeDetails, setServiceTypeDetails] = useState<string[]>([]);
+  const [insuranceApplicable, setInsuranceApplicable] = useState<string>("");
+  const [insuranceCompany, setInsuranceCompany] = useState("");
+  const [uinNumber, setUinNumber] = useState("");
+
+  // Materials multi-select
+  const [materialsData, setMaterialsData] = useState<any[]>([]);
+  const [selectedParts, setSelectedParts] = useState<{ materialDescription: string; partNumber: string; quantity: number }[]>([]);
+  const [searchMaterial, setSearchMaterial] = useState("");
+
+  // Fetch materials on mount
+  useEffect(() => {
+    const fetchMaterials = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch("/api/materials", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) setMaterialsData(await res.json());
+      } catch {}
+    };
+    if (open) fetchMaterials();
+  }, [open]);
 
   const form = useForm({
     resolver: zodResolver(insertServiceRequestSchema),
@@ -430,7 +458,7 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       district: "",
       contactDetails: "",
       complaint: "",
-      partsRequested: "",
+      complaintType: "general_service" as const,
       serviceType: "L1" as const,
       assignedEngineerId: "",
     }
@@ -474,16 +502,63 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     }
   }, [pincodeValue, lookupPincode]);
 
+  const addPart = (material: any) => {
+    if (selectedParts.find(p => p.partNumber === material.materialCode)) return;
+    setSelectedParts(prev => [...prev, {
+      materialDescription: material.materialDescription,
+      partNumber: material.materialCode,
+      quantity: 1,
+    }]);
+    setSearchMaterial("");
+  };
+
+  const updatePartQty = (idx: number, qty: number) => {
+    setSelectedParts(prev => prev.map((p, i) => i === idx ? { ...p, quantity: Math.max(1, qty) } : p));
+  };
+
+  const removePart = (idx: number) => {
+    setSelectedParts(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const toggleServiceType = (type: string) => {
+    setServiceTypeDetails(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
+    if (type === "Insurance" && serviceTypeDetails.includes("Insurance")) {
+      setInsuranceApplicable("");
+      setInsuranceCompany("");
+    }
+  };
+
+  const filteredMaterials = materialsData.filter(m =>
+    m.materialDescription?.toLowerCase().includes(searchMaterial.toLowerCase()) ||
+    m.materialCode?.toLowerCase().includes(searchMaterial.toLowerCase())
+  ).slice(0, 10);
+
   const onSubmit = (data: any) => {
-    const submitData = { ...data };
+    const submitData = {
+      ...data,
+      complaintType,
+      complaint: complaintType === "customer_statement" ? customerStatement : complaintType.replace("_", " "),
+      customerStatement: complaintType === "customer_statement" ? customerStatement : undefined,
+      modelDetails: modelDetails || undefined,
+      serviceTypeDetail: serviceTypeDetails.join(",") || undefined,
+      insuranceApplicable: serviceTypeDetails.includes("Insurance") ? insuranceApplicable === "yes" : false,
+      insuranceCompany: insuranceApplicable === "yes" ? insuranceCompany : undefined,
+      uinNumber: uinNumber || undefined,
+      partsRequested: selectedParts.length > 0 ? selectedParts : undefined,
+    };
     if (!submitData.assignedEngineerId) {
       delete submitData.assignedEngineerId;
     }
     mutate(submitData, {
       onSuccess: () => {
         form.reset();
-        setPincodeStatus("idle");
-        setPincodeMsg("");
+        setPincodeStatus("idle"); setPincodeMsg("");
+        setComplaintType("general_service"); setCustomerStatement("");
+        setModelDetails(""); setServiceTypeDetails([]);
+        setInsuranceApplicable(""); setInsuranceCompany("");
+        setUinNumber(""); setSelectedParts([]);
         onOpenChange(false);
       }
     });
@@ -491,26 +566,27 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Service Request</DialogTitle>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+          {/* Customer & Contact Info */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Pilot Name</Label>
+              <Label>Customer / Pilot Name *</Label>
               <Input {...form.register("pilotName")} data-testid="input-pilot-name" />
               {form.formState.errors.pilotName && <p className="text-xs text-destructive">{form.formState.errors.pilotName.message}</p>}
             </div>
             <div className="space-y-2">
-              <Label>Contact Details</Label>
+              <Label>Contact Details *</Label>
               <Input {...form.register("contactDetails")} data-testid="input-contact" />
               {form.formState.errors.contactDetails && <p className="text-xs text-destructive">{form.formState.errors.contactDetails.message}</p>}
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label>Address</Label>
+            <Label>Address *</Label>
             <Input {...form.register("address")} data-testid="input-address" />
           </div>
 
@@ -532,37 +608,35 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                 </div>
               </div>
               {pincodeMsg && (
-                <p className={`text-xs ${pincodeStatus === "success" ? "text-green-600 dark:text-green-400" : "text-destructive"}`} data-testid="text-pincode-result">
+                <p className={`text-xs ${pincodeStatus === "success" ? "text-green-600 dark:text-green-400" : "text-destructive"}`}>
                   {pincodeMsg}
                 </p>
               )}
             </div>
             <div className="space-y-2">
               <Label>State</Label>
-              <Input {...form.register("state")} placeholder="Auto-filled from pincode" data-testid="input-state" />
+              <Input {...form.register("state")} placeholder="Auto-filled" data-testid="input-state" />
             </div>
             <div className="space-y-2">
               <Label>District</Label>
-              <Input {...form.register("district")} placeholder="Auto-filled from pincode" data-testid="input-district" />
+              <Input {...form.register("district")} placeholder="Auto-filled" data-testid="input-district" />
             </div>
           </div>
 
+          {/* Drone Details */}
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label>Drone No.</Label>
+              <Label>Drone No. *</Label>
               <Input {...form.register("droneNumber")} data-testid="input-drone-no" />
-              {(form.formState.errors as any).droneNumber && <p className="text-xs text-destructive">{(form.formState.errors as any).droneNumber.message}</p>}
             </div>
             <div className="space-y-2">
-              <Label>Serial No.</Label>
+              <Label>Serial No. *</Label>
               <Input {...form.register("serialNumber")} data-testid="input-drone-serial" />
             </div>
             <div className="space-y-2">
-              <Label>Type</Label>
+              <Label>Service Level</Label>
               <Select onValueChange={(val: any) => form.setValue("serviceType", val)} defaultValue="L1">
-                <SelectTrigger data-testid="select-service-type">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="L1">L1 Service</SelectItem>
                   <SelectItem value="L2">L2 Service</SelectItem>
@@ -572,23 +646,169 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Complaint</Label>
-            <Textarea {...form.register("complaint")} rows={3} data-testid="input-complaint" />
-            {form.formState.errors.complaint && <p className="text-xs text-destructive">{form.formState.errors.complaint.message}</p>}
+          {/* Model Details */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Model Details</Label>
+              <Select value={modelDetails} onValueChange={setModelDetails}>
+                <SelectTrigger data-testid="select-model-details"><SelectValue placeholder="Select model" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="E10">E10</SelectItem>
+                  <SelectItem value="E10P">E10P</SelectItem>
+                  <SelectItem value="DHQ4">DHQ4</SelectItem>
+                  <SelectItem value="Others">Others</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>UIN Number</Label>
+              <Input value={uinNumber} onChange={(e) => setUinNumber(e.target.value)} placeholder="Enter UIN" data-testid="input-uin" />
+            </div>
           </div>
 
+          {/* Service Type Checkboxes */}
           <div className="space-y-2">
-            <Label>Requested Parts (Optional)</Label>
-            <Input {...form.register("partsRequested")} placeholder="e.g. Propellers, Battery..." data-testid="input-parts" />
+            <Label>Service Type</Label>
+            <div className="flex gap-6 py-1">
+              {["Warranty", "Paid", "Insurance"].map(type => (
+                <label key={type} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={serviceTypeDetails.includes(type)}
+                    onChange={() => toggleServiceType(type)}
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm">{type}</span>
+                </label>
+              ))}
+            </div>
           </div>
 
+          {/* Insurance conditional fields */}
+          {serviceTypeDetails.includes("Insurance") && (
+            <div className="grid grid-cols-2 gap-4 pl-4 border-l-2 border-blue-200">
+              <div className="space-y-2">
+                <Label>Insurance Applicable</Label>
+                <Select value={insuranceApplicable} onValueChange={setInsuranceApplicable}>
+                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="yes">Yes</SelectItem>
+                    <SelectItem value="no">No</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {insuranceApplicable === "yes" && (
+                <div className="space-y-2">
+                  <Label>Insurance Company</Label>
+                  <Select value={insuranceCompany} onValueChange={setInsuranceCompany}>
+                    <SelectTrigger><SelectValue placeholder="Select company" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="HDFC ERGO">HDFC ERGO</SelectItem>
+                      <SelectItem value="ICICI Lombard">ICICI Lombard</SelectItem>
+                      <SelectItem value="Bajaj Allianz">Bajaj Allianz</SelectItem>
+                      <SelectItem value="Tata AIG">Tata AIG</SelectItem>
+                      <SelectItem value="New India Assurance">New India Assurance</SelectItem>
+                      <SelectItem value="Others">Others</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Complaint Dropdown */}
           <div className="space-y-2">
-            <Label>Assign Engineer</Label>
+            <Label>Complaint Type *</Label>
+            <Select value={complaintType} onValueChange={(v) => { setComplaintType(v); if (v !== "customer_statement") setCustomerStatement(""); }}>
+              <SelectTrigger data-testid="select-complaint-type"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="general_service">General Service</SelectItem>
+                <SelectItem value="preventive_maintenance">Preventive Maintenance</SelectItem>
+                <SelectItem value="customer_statement">Customer Statement</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {complaintType === "customer_statement" && (
+            <div className="space-y-2">
+              <Label>Customer Statement *</Label>
+              <Textarea
+                value={customerStatement}
+                onChange={(e) => setCustomerStatement(e.target.value)}
+                rows={3}
+                placeholder="Enter customer statement..."
+                data-testid="input-customer-statement"
+              />
+            </div>
+          )}
+
+          {/* Requested Parts - Multi Select from Materials Master */}
+          <div className="space-y-2">
+            <Label>Requested Parts (from Materials Master)</Label>
+            <div className="relative">
+              <Input
+                value={searchMaterial}
+                onChange={(e) => setSearchMaterial(e.target.value)}
+                placeholder="Search materials by description or code..."
+                data-testid="input-search-materials"
+              />
+              {searchMaterial.length > 1 && filteredMaterials.length > 0 && (
+                <div className="absolute z-50 w-full mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                  {filteredMaterials.map((m: any) => (
+                    <div
+                      key={m.id}
+                      className="px-3 py-2 hover:bg-muted cursor-pointer text-sm flex justify-between"
+                      onClick={() => addPart(m)}
+                    >
+                      <span>{m.materialDescription}</span>
+                      <span className="text-muted-foreground font-mono text-xs">{m.materialCode}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {selectedParts.length > 0 && (
+              <div className="border rounded-md mt-2">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left p-2">Part Description</th>
+                      <th className="text-left p-2 w-28">Part No.</th>
+                      <th className="text-center p-2 w-20">Qty</th>
+                      <th className="p-2 w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {selectedParts.map((part, idx) => (
+                      <tr key={idx}>
+                        <td className="p-2 text-xs">{part.materialDescription}</td>
+                        <td className="p-2 font-mono text-xs">{part.partNumber}</td>
+                        <td className="p-2">
+                          <Input
+                            type="number"
+                            min={1}
+                            value={part.quantity}
+                            onChange={(e) => updatePartQty(idx, parseInt(e.target.value) || 1)}
+                            className="h-7 w-16 text-center mx-auto"
+                          />
+                        </td>
+                        <td className="p-2 text-center">
+                          <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => removePart(idx)}>
+                            <Trash2 className="h-3 w-3 text-destructive" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Assign Engineer */}
+          <div className="space-y-2">
+            <Label>Service Assigned To (Engineer)</Label>
             <Select onValueChange={(val) => form.setValue("assignedEngineerId", val)} defaultValue="">
-              <SelectTrigger data-testid="select-assign-engineer">
-                <SelectValue placeholder="Select engineer to assign" />
-              </SelectTrigger>
+              <SelectTrigger data-testid="select-assign-engineer"><SelectValue placeholder="Select engineer to assign" /></SelectTrigger>
               <SelectContent>
                 {engineers.map((eng: any) => (
                   <SelectItem key={eng.id} value={String(eng.id)}>{eng.name}</SelectItem>
@@ -599,7 +819,10 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
           <div className="flex justify-end gap-2 pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-create">Cancel</Button>
-            <Button type="submit" disabled={isPending} data-testid="button-submit-create">Create Request</Button>
+            <Button type="submit" disabled={isPending} data-testid="button-submit-create">
+              {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Create Request
+            </Button>
           </div>
         </form>
       </DialogContent>

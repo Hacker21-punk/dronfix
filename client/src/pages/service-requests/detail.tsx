@@ -7,21 +7,17 @@ import {
   useDeleteServiceImage,
   useUploadDocument,
   useAssignEngineer,
+  useAcceptRequest,
   useSubmitInvoice,
   useSubmitLogistics,
   useExpenses,
   useAddExpense,
   useUpdateExpense,
   useDeleteExpense,
-  useAadhaarStatus,
-  useSendAadhaarOtp,
-  useVerifyAadhaarOtp,
   useJobCard,
   useUpsertJobCard,
   useFeedbackForm,
   useUpsertFeedbackForm,
-  useSignatures,
-  useUpsertSignature,
 } from "@/hooks/use-service-requests";
 import { useInventory } from "@/hooks/use-inventory";
 import { useCurrentUser, useUsers } from "@/hooks/use-users";
@@ -74,6 +70,7 @@ export default function ServiceRequestDetail() {
   }
 
   const role = profile?.role || 'engineer';
+  const isEngineerAccepted = ['accepted', 'in_progress', 'completed', 'billed'].includes(request.status);
 
   const steps = ['pending', 'accepted', 'in_progress', 'completed', 'billed'];
   const currentStep = steps.indexOf(request.status);
@@ -89,7 +86,13 @@ export default function ServiceRequestDetail() {
           <div className="flex items-center gap-3">
              <h1 className="text-3xl font-display font-bold">Request #{requestId}</h1>
              <Badge className="text-base uppercase tracking-wide">{request.status.replace('_', ' ')}</Badge>
+             {request.docNumber && (
+               <Badge variant="secondary" className="text-xs font-mono">Doc: {request.docNumber}</Badge>
+             )}
           </div>
+          {request.crmTicketNumber && (
+            <p className="text-sm text-muted-foreground mt-1">CRM Ticket: <span className="font-mono font-medium">{request.crmTicketNumber}</span></p>
+          )}
         </div>
 
         <div className="flex gap-2">
@@ -148,7 +151,7 @@ export default function ServiceRequestDetail() {
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                   <h4 className="text-sm font-medium text-muted-foreground mb-1">Pilot Details</h4>
+                   <h4 className="text-sm font-medium text-muted-foreground mb-1">Customer / Pilot Details</h4>
                    <p className="font-medium text-lg">{request.pilotName}</p>
                    <p className="text-sm">{request.contactDetails}</p>
                    <p className="text-sm text-muted-foreground">{request.address}</p>
@@ -162,22 +165,71 @@ export default function ServiceRequestDetail() {
                    <h4 className="text-sm font-medium text-muted-foreground mb-1">Drone Details</h4>
                    <p className="font-medium text-lg">{request.droneNumber} <span className="text-sm font-normal text-muted-foreground">({request.serviceType})</span></p>
                    <p className="text-sm font-mono">SN: {request.serialNumber}</p>
+                   {request.modelDetails && <p className="text-sm">Model: <span className="font-medium">{request.modelDetails}</span></p>}
+                   {request.uinNumber && <p className="text-sm font-mono">UIN: {request.uinNumber}</p>}
                 </div>
               </div>
+              {/* Service Type Detail */}
+              {request.serviceTypeDetail && (
+                <>
+                  <Separator />
+                  <div className="flex flex-wrap gap-4">
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground mb-1">Service Type</h4>
+                      <div className="flex gap-2">
+                        {request.serviceTypeDetail.split(',').map((t: string) => (
+                          <Badge key={t} variant="secondary" className="text-xs">{t.trim()}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                    {request.insuranceApplicable && (
+                      <div>
+                        <h4 className="text-sm font-medium text-muted-foreground mb-1">Insurance</h4>
+                        <p className="text-sm font-medium">{request.insuranceCompany || 'Yes'}</p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
               <Separator />
               <div>
                 <h4 className="text-sm font-medium text-muted-foreground mb-2">Complaint</h4>
-                <div className="p-4 bg-muted/40 rounded-lg italic text-muted-foreground">
-                  "{request.complaint}"
-                </div>
+                <Badge variant="outline" className="mb-2 text-xs">{(request.complaintType || 'general_service').replace(/_/g, ' ')}</Badge>
+                {request.customerStatement ? (
+                  <div className="p-4 bg-muted/40 rounded-lg italic text-muted-foreground">
+                    "{request.customerStatement}"
+                  </div>
+                ) : request.complaint ? (
+                  <div className="p-4 bg-muted/40 rounded-lg italic text-muted-foreground">
+                    "{request.complaint}"
+                  </div>
+                ) : null}
               </div>
-              {request.partsRequested && (
+              {/* Requested Parts from parts_requested table */}
+              {request.partsRequested && request.partsRequested.length > 0 && (
                 <>
                   <Separator />
                   <div>
-                    <h4 className="text-sm font-medium text-muted-foreground mb-2" data-testid="text-parts-requested-label">Parts Requested</h4>
-                    <div className="p-4 bg-muted/40 rounded-lg" data-testid="text-parts-requested">
-                      {request.partsRequested}
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2">Requested Parts</h4>
+                    <div className="border rounded-md">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="text-left p-2">Description</th>
+                            <th className="text-left p-2 w-28">Part No.</th>
+                            <th className="text-center p-2 w-16">Qty</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {(Array.isArray(request.partsRequested) ? request.partsRequested : []).map((part: any, idx: number) => (
+                            <tr key={idx}>
+                              <td className="p-2 text-xs">{part.materialDescription || part.itemName}</td>
+                              <td className="p-2 font-mono text-xs">{part.partNumber || '-'}</td>
+                              <td className="p-2 text-center">{part.quantity}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </>
@@ -185,13 +237,13 @@ export default function ServiceRequestDetail() {
             </CardContent>
           </Card>
 
-          {/* Parts Consumed (Only visible if service started) */}
-          {['in_progress', 'completed', 'billed'].includes(request.status) && (
+          {/* Parts Consumed (Only visible if service started by engineer) */}
+          {isEngineerAccepted && ['in_progress', 'completed', 'billed'].includes(request.status) && (
             <PartsConsumptionSection requestId={requestId} canEdit={role === 'engineer' && request.status === 'in_progress'} parts={request.parts} role={role} />
           )}
 
-          {/* Engineer Expenses (Only visible for engineers) */}
-          {role === 'engineer' && (
+          {/* Engineer Expenses (Only visible after acceptance) */}
+          {role === 'engineer' && isEngineerAccepted && (
             <ExpensesSection 
               requestId={requestId} 
               droneNumber={request.droneNumber} 
@@ -281,19 +333,8 @@ export default function ServiceRequestDetail() {
             </CardContent>
           </Card>
 
-          {/* Aadhaar Verification Section */}
-          {(role === 'engineer' || role === 'admin') && (
-            <AadhaarSection requestId={requestId} />
-          )}
-
           {/* Digital Job Card */}
           <JobCardSection requestId={requestId} request={request} role={role} />
-
-          {/* Customer Feedback */}
-          <FeedbackSection request={request} role={role} />
-
-          {/* Digital Signatures */}
-          <SignatureSection requestId={requestId} role={role} />
 
           {/* Invoice Details (if filled) */}
           {request.invoiceNumber && (
@@ -367,26 +408,32 @@ function AssignEngineerDialog({ requestId, currentEngineerId }: { requestId: num
 }
 
 function AcceptRequestDialog({ requestId }: { requestId: number }) {
-  const updateMutation = useUpdateServiceRequest();
+  const acceptMutation = useAcceptRequest();
   const [date, setDate] = useState("");
   const [open, setOpen] = useState(false);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="w-full">Accept Request</Button>
+        <Button className="w-full" variant="default">Accept Request</Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader><DialogTitle>Set Tentative Service Date</DialogTitle></DialogHeader>
-        <div className="py-4">
-           <Label>Date</Label>
-           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <DialogHeader><DialogTitle>Accept Service Request</DialogTitle></DialogHeader>
+        <div className="py-4 space-y-4">
+           <p className="text-sm text-muted-foreground">By accepting, a Doc Number will be auto-generated and you'll be able to fill job sheets, consume parts, and upload reports.</p>
+           <div>
+             <Label>Tentative Service Date</Label>
+             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+           </div>
         </div>
-        <Button onClick={() => updateMutation.mutate({ 
-          id: requestId, 
-          status: 'accepted', 
-          tentativeServiceDate: date ? new Date(date) : undefined
-        } as any, { onSuccess: () => setOpen(false) })}>
+        <Button 
+          disabled={acceptMutation.isPending}
+          onClick={() => acceptMutation.mutate({ 
+            id: requestId, 
+            tentativeServiceDate: date || undefined
+          }, { onSuccess: () => setOpen(false) })}
+        >
+          {acceptMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
           Confirm Acceptance
         </Button>
       </DialogContent>
@@ -1563,112 +1610,14 @@ function ExpensesSection({ requestId, droneNumber, baseLocation }: { requestId: 
   );
 }
 
-// ── Aadhaar Verification Section ──────────────────────────────────────────
-function AadhaarSection({ requestId }: { requestId: number }) {
-  const { data: aadhaar } = useAadhaarStatus(requestId);
-  const sendOtpMutation = useSendAadhaarOtp();
-  const verifyOtpMutation = useVerifyAadhaarOtp();
-  const [aadhaarNumber, setAadhaarNumber] = useState("");
-  const [otp, setOtp] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
-  const [consent, setConsent] = useState(false);
-
-  const handleSendOtp = () => {
-    sendOtpMutation.mutate({ id: requestId, aadhaarNumber, consent }, {
-      onSuccess: () => setOtpSent(true),
-    });
-  };
-
-  const handleVerifyOtp = () => {
-    verifyOtpMutation.mutate({ id: requestId, otp });
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Shield className="h-4 w-4 text-blue-600" /> Aadhaar Verification
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {aadhaar?.verified ? (
-          <div className="flex items-center gap-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-            <CheckCircle className="h-5 w-5 text-green-600" />
-            <div>
-              <p className="text-sm font-medium text-green-700 dark:text-green-400">Aadhaar Verified</p>
-              <p className="text-xs text-green-600 dark:text-green-500">{aadhaar.maskedAadhaar}</p>
-            </div>
-            {aadhaar.locked && <Badge variant="outline" className="ml-auto text-xs">🔒 Locked</Badge>}
-          </div>
-        ) : !otpSent ? (
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="aadhaar">Aadhaar Number</Label>
-              <Input
-                id="aadhaar"
-                type="password"
-                placeholder="Enter 12-digit Aadhaar"
-                value={aadhaarNumber}
-                onChange={(e) => setAadhaarNumber(e.target.value.replace(/\D/g, "").slice(0, 12))}
-                maxLength={12}
-              />
-            </div>
-            
-            <div className="flex items-start space-x-2 pt-2 pb-2">
-              <Checkbox id="consent" checked={consent} onCheckedChange={(c) => setConsent(c as boolean)} />
-              <div className="grid gap-1.5 leading-none">
-                <label
-                  htmlFor="consent"
-                  className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  I explicitly consent to providing my Aadhaar details for identity verification purposes via Karza verification API.
-                </label>
-              </div>
-            </div>
-
-            <Button onClick={handleSendOtp} disabled={aadhaarNumber.length !== 12 || !consent || sendOtpMutation.isPending} className="w-full">
-              {sendOtpMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Sending...</> : "Verify Identity (Send OTP)"}
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">OTP sent to Aadhaar-linked mobile number</p>
-            <div className="space-y-1.5">
-              <Label htmlFor="otp">Enter OTP</Label>
-              <Input
-                id="otp"
-                placeholder="6-digit OTP"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                maxLength={6}
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={handleVerifyOtp} disabled={otp.length !== 6 || verifyOtpMutation.isPending} className="flex-1">
-                {verifyOtpMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Verifying...</> : "Verify OTP"}
-              </Button>
-              <Button variant="outline" onClick={() => { setOtpSent(false); setOtp(""); }}>
-                Resend
-              </Button>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 // ── Digital Job Card Section ──────────────────────────────────────────────
 function JobCardSection({ requestId, request, role }: { requestId: number; request: any; role: string }) {
   const { data: jobCard } = useJobCard(requestId);
-  const { data: sigs } = useSignatures(requestId);
   const upsertMutation = useUpsertJobCard();
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState<any>({});
   const pdfRef = useRef<HTMLDivElement>(null);
-
-  const customerSig = sigs?.find((s: any) => s.type === "customer");
-  const engineerSig = sigs?.find((s: any) => s.type === "engineer");
 
   // Job card items (Parts Usage List)
   const jobCardItems = jobCard?.items || [];
@@ -1755,10 +1704,8 @@ function JobCardSection({ requestId, request, role }: { requestId: number; reque
       ref={pdfRef} 
       request={request} 
       jobCard={jobCard} 
-      customerSignature={customerSig?.signatureData}
-      engineerSignature={engineerSig?.signatureData}
     />
-  ), [request, jobCard, customerSig?.signatureData, engineerSig?.signatureData]);
+  ), [request, jobCard]);
 
   return (
     <Card>
@@ -1937,168 +1884,3 @@ function JobCardSection({ requestId, request, role }: { requestId: number; reque
   );
 }
 
-// ── Customer Feedback Section ─────────────────────────────────────────────
-function FeedbackSection({ request, role }: { request: any; role: string }) {
-  const { data: feedback } = useFeedbackForm(request.id);
-  const { data: sigs } = useSignatures(request.id);
-  const upsertMutation = useUpsertFeedbackForm();
-  const [isEditing, setIsEditing] = useState(false);
-  const [rating, setRating] = useState(0);
-  const [remarks, setRemarks] = useState("");
-  const pdfRef = useRef<HTMLDivElement>(null);
-
-  const customerSig = sigs?.find((s: any) => s.type === "customer");
-
-  const startEditing = () => {
-    setRating(feedback?.rating || 0);
-    setRemarks(feedback?.remarks || "");
-    setIsEditing(true);
-  };
-
-  const handleSave = () => {
-    if (rating < 1) return;
-    upsertMutation.mutate({ id: request.id, rating, remarks }, {
-      onSuccess: () => setIsEditing(false),
-    });
-  };
-
-  const handleExportPDF = () => {
-    if (!pdfRef.current) return;
-    const element = pdfRef.current;
-    const opt = {
-      margin: 0,
-      filename: `Feedback_REQ${request.id}.pdf`,
-      image: { type: 'jpeg' as const, quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
-    };
-    html2pdf().set(opt as any).from(element).save();
-  };
-
-  const pdfCanvas = useMemo(() => (
-    <FeedbackPDF 
-      ref={pdfRef} 
-      request={request} 
-      feedback={feedback} 
-      customerSignature={customerSig?.signatureData} 
-    />
-  ), [request, feedback, customerSig?.signatureData]);
-
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2">
-          <Star className="h-4 w-4 text-amber-500" /> Customer Feedback
-        </CardTitle>
-        <div className="flex gap-2">
-          {(role === 'engineer' || role === 'admin') && !isEditing && (
-            <Button variant="ghost" size="sm" onClick={startEditing}>
-              <Pencil className="h-3.5 w-3.5 mr-1" /> {feedback ? "Edit" : "Fill"}
-            </Button>
-          )}
-          {feedback && (
-            <Button variant="outline" size="sm" onClick={handleExportPDF}>
-              <Download className="h-3.5 w-3.5 mr-1" /> PDF Export
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>
-        {!feedback && !isEditing ? (
-          <div className="text-center py-6 text-sm text-muted-foreground">
-            <Star className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
-            No feedback received yet
-          </div>
-        ) : isEditing ? (
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Rating</Label>
-              <div className="flex gap-1">
-                {[1, 2, 3, 4, 5].map(star => (
-                  <button
-                    key={star}
-                    onClick={() => setRating(star)}
-                    className={`p-1 transition-colors ${star <= rating ? 'text-amber-500' : 'text-slate-300 hover:text-amber-300'}`}
-                  >
-                    <Star className={`h-7 w-7 ${star <= rating ? 'fill-amber-500' : ''}`} />
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Customer Remarks</Label>
-              <Textarea
-                placeholder="Customer comments..."
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={handleSave} disabled={rating < 1 || upsertMutation.isPending} className="flex-1">
-                {upsertMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                Save Feedback
-              </Button>
-              <Button variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex gap-0.5">
-              {[1, 2, 3, 4, 5].map(star => (
-                <Star key={star} className={`h-5 w-5 ${star <= (feedback?.rating || 0) ? 'fill-amber-500 text-amber-500' : 'text-slate-300'}`} />
-              ))}
-              <span className="ml-2 text-sm font-medium">{feedback?.rating}/5</span>
-            </div>
-            {feedback?.remarks && (
-              <p className="text-sm text-muted-foreground italic">"{feedback.remarks}"</p>
-            )}
-            {feedback?.locked && <Badge variant="outline" className="text-xs">🔒 Locked</Badge>}
-          </div>
-        )}
-        
-        {/* Hidden PDF Canvas Target */}
-        <div style={{ position: "absolute", left: "-9999px", top: 0 }}>
-          {pdfCanvas}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ── Digital Signatures Section ────────────────────────────────────────────
-function SignatureSection({ requestId, role }: { requestId: number; role: string }) {
-  const { data: sigs } = useSignatures(requestId);
-  const upsertMutation = useUpsertSignature();
-
-  const customerSig = sigs?.find((s: any) => s.type === "customer");
-  const engineerSig = sigs?.find((s: any) => s.type === "engineer");
-
-  const handleSave = (type: string, dataUrl: string) => {
-    upsertMutation.mutate({ id: requestId, type, signatureData: dataUrl });
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <PenTool className="h-4 w-4 text-indigo-600" /> Digital Signatures
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <SignaturePad
-          label="Customer Signature"
-          onSave={(dataUrl) => handleSave("customer", dataUrl)}
-          existingSignature={customerSig?.signatureData}
-          locked={customerSig?.locked || role === 'account' || role === 'logistics'}
-        />
-        <Separator />
-        <SignaturePad
-          label="Engineer Signature"
-          onSave={(dataUrl) => handleSave("engineer", dataUrl)}
-          existingSignature={engineerSig?.signatureData}
-          locked={engineerSig?.locked || role === 'account' || role === 'logistics'}
-        />
-      </CardContent>
-    </Card>
-  );
-}

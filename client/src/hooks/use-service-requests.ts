@@ -119,6 +119,40 @@ export function useAssignEngineer() {
   });
 }
 
+// ── Engineer Accept Request ───────────────────────────────────────────────
+export function useAcceptRequest() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, tentativeServiceDate }: { id: number; tentativeServiceDate?: string }) => {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`/api/engineer/accept/${id}`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ tentativeServiceDate }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ message: "Failed to accept" }));
+        throw new Error(error.message);
+      }
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.serviceRequests.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.serviceRequests.get.path, variables.id] });
+      toast({ title: "Request Accepted", description: "You have accepted this service request" });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+}
+
 export function useUploadServiceImage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();

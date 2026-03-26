@@ -241,11 +241,21 @@ export async function registerRoutes(app: Express) {
 
   app.post("/api/service-requests", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
     try {
-      const request = await storage.createServiceRequest(req.body);
+      // Auto-generate CRM ticket number
+      const crmTicketNumber = await storage.generateCrmTicket();
+      const requestData = { ...req.body, crmTicketNumber };
+      // Remove partsRequested from the main insert
+      delete requestData.partsRequested;
+      const request = await storage.createServiceRequest(requestData);
 
       // Create parts_requested if provided
       if (req.body.partsRequested && Array.isArray(req.body.partsRequested)) {
-        await storage.addPartsRequested(request.id, req.body.partsRequested);
+        await storage.addPartsRequested(request.id, req.body.partsRequested.map((p: any) => ({
+          itemName: p.materialDescription || p.itemName || '',
+          materialDescription: p.materialDescription || '',
+          partNumber: p.partNumber || '',
+          quantity: p.quantity || 1,
+        })));
       }
 
       res.status(201).json(request);
@@ -268,6 +278,30 @@ export async function registerRoutes(app: Express) {
     try {
       await storage.deleteServiceRequest(Number(req.params.id));
       res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Engineer Accept ─────────────────────────────────────────────────────
+  app.post("/api/engineer/accept/:id", jwtAuth, requireRole("engineer"), async (req: Request, res: Response) => {
+    try {
+      const serviceRequestId = Number(req.params.id);
+      const userId = (req as any).user.userId;
+      const sr = await storage.getServiceRequestWithDetails(serviceRequestId);
+      if (!sr) return res.status(404).json({ message: "Service request not found" });
+      if (sr.assignedEngineerId !== userId) {
+        return res.status(403).json({ message: "You are not assigned to this request" });
+      }
+      if (sr.status !== "pending" && sr.status !== "assigned") {
+        return res.status(400).json({ message: "Request is not in a state that can be accepted" });
+      }
+      const { tentativeServiceDate } = req.body;
+      const updated = await storage.updateServiceRequest(serviceRequestId, {
+        status: "accepted",
+        tentativeServiceDate: tentativeServiceDate ? new Date(tentativeServiceDate) : undefined,
+      });
+      res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
