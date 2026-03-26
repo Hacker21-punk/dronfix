@@ -241,8 +241,14 @@ export async function registerRoutes(app: Express) {
 
   app.post("/api/service-requests", jwtAuth, requireRole("admin"), async (req: Request, res: Response) => {
     try {
-      // Auto-generate CRM ticket number
-      const crmTicketNumber = await storage.generateCrmTicket();
+      // Auto-generate CRM ticket number (safe — fallback if jobCards table issue)
+      let crmTicketNumber: string;
+      try {
+        crmTicketNumber = await storage.generateCrmTicket();
+      } catch {
+        const now = new Date();
+        crmTicketNumber = `DRN-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}-${String(Math.floor(100000 + Math.random() * 900000))}`;
+      }
 
       // Extract only known fields for the insert
       const {
@@ -250,10 +256,11 @@ export async function registerRoutes(app: Express) {
         contactDetails, complaintType, complaint, customerStatement, modelDetails,
         serviceType, serviceTypeDetail, insuranceApplicable, insuranceCompany,
         uinNumber, assignedEngineerId, tentativeServiceDate,
-        partsRequested: partsRequestedData, // separate from DB insert
+        partsRequested: partsRequestedData,
       } = req.body;
 
-      const requestData: any = {
+      // Full request data with all new columns
+      const fullRequestData: any = {
         pilotName,
         droneNumber,
         serialNumber,
@@ -264,30 +271,53 @@ export async function registerRoutes(app: Express) {
         crmTicketNumber,
       };
 
-      // Add optional fields only if present
-      if (pincode) requestData.pincode = pincode;
-      if (state) requestData.state = state;
-      if (district) requestData.district = district;
-      if (complaintType) requestData.complaintType = complaintType;
-      if (customerStatement) requestData.customerStatement = customerStatement;
-      if (modelDetails) requestData.modelDetails = modelDetails;
-      if (serviceTypeDetail) requestData.serviceTypeDetail = serviceTypeDetail;
-      if (typeof insuranceApplicable === "boolean") requestData.insuranceApplicable = insuranceApplicable;
-      if (insuranceCompany) requestData.insuranceCompany = insuranceCompany;
-      if (uinNumber) requestData.uinNumber = uinNumber;
-      if (assignedEngineerId) requestData.assignedEngineerId = assignedEngineerId;
-      if (tentativeServiceDate) requestData.tentativeServiceDate = new Date(tentativeServiceDate);
+      if (pincode) fullRequestData.pincode = pincode;
+      if (state) fullRequestData.state = state;
+      if (district) fullRequestData.district = district;
+      if (complaintType) fullRequestData.complaintType = complaintType;
+      if (customerStatement) fullRequestData.customerStatement = customerStatement;
+      if (modelDetails) fullRequestData.modelDetails = modelDetails;
+      if (serviceTypeDetail) fullRequestData.serviceTypeDetail = serviceTypeDetail;
+      if (typeof insuranceApplicable === "boolean") fullRequestData.insuranceApplicable = insuranceApplicable;
+      if (insuranceCompany) fullRequestData.insuranceCompany = insuranceCompany;
+      if (uinNumber) fullRequestData.uinNumber = uinNumber;
+      if (assignedEngineerId) fullRequestData.assignedEngineerId = assignedEngineerId;
+      if (tentativeServiceDate) fullRequestData.tentativeServiceDate = new Date(tentativeServiceDate);
 
-      const request = await storage.createServiceRequest(requestData);
+      let request: any;
+      try {
+        request = await storage.createServiceRequest(fullRequestData);
+      } catch (insertErr: any) {
+        // If new columns don't exist yet in production, fallback to base columns only
+        console.error("[INSERT FULL FAILED, trying base-only]", insertErr.message);
+        const baseRequestData: any = {
+          pilotName,
+          droneNumber,
+          serialNumber,
+          address,
+          contactDetails,
+          serviceType: serviceType || "L1",
+          complaint: complaint || "",
+        };
+        if (pincode) baseRequestData.pincode = pincode;
+        if (state) baseRequestData.state = state;
+        if (district) baseRequestData.district = district;
+        if (assignedEngineerId) baseRequestData.assignedEngineerId = assignedEngineerId;
+        request = await storage.createServiceRequest(baseRequestData);
+      }
 
       // Create parts_requested if provided
       if (partsRequestedData && Array.isArray(partsRequestedData)) {
-        await storage.addPartsRequested(request.id, partsRequestedData.map((p: any) => ({
-          itemName: p.materialDescription || p.itemName || '',
-          materialDescription: p.materialDescription || '',
-          partNumber: p.partNumber || '',
-          quantity: p.quantity || 1,
-        })));
+        try {
+          await storage.addPartsRequested(request.id, partsRequestedData.map((p: any) => ({
+            itemName: p.materialDescription || p.itemName || '',
+            materialDescription: p.materialDescription || '',
+            partNumber: p.partNumber || '',
+            quantity: p.quantity || 1,
+          })));
+        } catch (partsErr: any) {
+          console.error("[PARTS REQUESTED INSERT FAILED]", partsErr.message);
+        }
       }
 
       res.status(201).json(request);

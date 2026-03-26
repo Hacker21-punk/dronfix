@@ -673,6 +673,12 @@ function CreateRequestDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             </div>
           </div>
 
+          {/* CRM Ticket Number */}
+          <div className="flex items-center gap-3 px-3 py-2 bg-muted/50 rounded-lg border border-dashed">
+            <span className="text-sm font-medium text-muted-foreground">CRM Ticket No.</span>
+            <span className="text-sm font-mono text-blue-600 dark:text-blue-400">Auto-generated on submit (DRN-YYYYMM-XXXXXX)</span>
+          </div>
+
           {/* Model Details */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
