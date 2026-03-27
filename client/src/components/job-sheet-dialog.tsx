@@ -48,18 +48,17 @@ export function JobSheetDialog({
 
   const saveMutation = useMutation({
     mutationFn: async (data: any) => {
-      // We send it to job-cards endpoint
       const payload = {
-        serviceRequestId: requestId,
         observations: data.observations,
         diagnosis: data.diagnosis,
         rootCause: data.rootCause,
         actionTaken: data.correctiveAction,
+        customerName: data.filledBy || engineerName,
       };
       
       const res = await apiRequest(
-        existingJobCard ? "PATCH" : "POST",
-        existingJobCard ? `/api/job-cards/${existingJobCard.id}` : "/api/job-cards",
+        "PUT",
+        `/api/service-requests/${requestId}/job-card`,
         payload
       );
       

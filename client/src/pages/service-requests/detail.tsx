@@ -264,8 +264,10 @@ export default function ServiceRequestDetail() {
             />
           )}
 
-          {/* Service Images */}
-          <ServiceImagesSection requestId={requestId} canUpload={role === 'engineer'} images={request.images} />
+          {/* Service Images (Only visible after acceptance) */}
+          {shouldShowSections && (
+            <ServiceImagesSection requestId={requestId} canUpload={role === 'engineer' && request.status === 'in_progress'} images={request.images} />
+          )}
 
         </div>
 
@@ -325,7 +327,7 @@ export default function ServiceRequestDetail() {
                     <JobSheetDialog 
                       requestId={requestId} 
                       engineerName={profile?.name || ''} 
-                      existingJobCard={request.jobCards?.[0]} 
+                      existingJobCard={request.jobCard} 
                     />
                   </div>
                 ) : (
