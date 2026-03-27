@@ -784,6 +784,33 @@ export class DatabaseStorage implements IStorage {
     return db.insert(jobCardItems).values(values).returning();
   }
 
+  // ── Signatures ──────────────────────────────────────────────────────────
+  async saveSignature(serviceRequestId: number, type: string, signatureData: string) {
+    // Upsert: replace existing signature of this type
+    const existing = await db.select().from(signatures)
+      .where(and(eq(signatures.serviceRequestId, serviceRequestId), eq(signatures.type, type)))
+      .limit(1);
+    if (existing.length > 0) {
+      const [row] = await db.update(signatures)
+        .set({ signatureData, locked: true })
+        .where(eq(signatures.id, existing[0].id))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(signatures).values({
+      serviceRequestId,
+      type,
+      signatureData,
+      locked: true,
+    }).returning();
+    return row;
+  }
+
+  async getSignaturesByRequest(serviceRequestId: number) {
+    return db.select().from(signatures)
+      .where(eq(signatures.serviceRequestId, serviceRequestId));
+  }
+
   // ── Feedback Forms ────────────────────────────────────────────────────────
   async getFeedbackForm(serviceRequestId: number) {
     const [row] = await db.select().from(feedbackForms)

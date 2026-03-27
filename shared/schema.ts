@@ -225,6 +225,9 @@ export const jobCards = pgTable("job_cards", {
   partsReplaced: text("parts_replaced"),
   observations: text("observations"),
   recommendations: text("recommendations"),
+  // Remarks at signature
+  engineerRemarks: text("engineer_remarks"),
+  customerRemarks: text("customer_remarks"),
   // Status
   locked: boolean("locked").notNull().default(false),
   filledBy: text("filled_by").references(() => users.id),

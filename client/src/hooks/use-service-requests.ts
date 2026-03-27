@@ -550,7 +550,7 @@ export function useSecureComplete() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: number; aadhaarMasked: string; signatureData: string; assistedSignature: boolean; geoPhotoData: string; latitude: number; longitude: number }) => {
+    mutationFn: async ({ id, ...data }: { id: number; signatureData: string; engineerSignatureData: string; assistedSignature: boolean; geoPhotoData: string; latitude: number; longitude: number; engineerRemarks?: string; customerRemarks?: string }) => {
       const res = await apiRequest("POST", `/api/service-requests/${id}/complete-secure`, data);
       return res.json();
     },

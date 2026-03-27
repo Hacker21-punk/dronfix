@@ -234,6 +234,8 @@ async function runMigrations() {
       `ALTER TABLE job_cards ADD COLUMN IF NOT EXISTS model_details TEXT`,
       `ALTER TABLE job_cards ADD COLUMN IF NOT EXISTS service_type TEXT`,
       `ALTER TABLE job_cards ADD COLUMN IF NOT EXISTS engineer_notes TEXT`,
+      `ALTER TABLE job_cards ADD COLUMN IF NOT EXISTS engineer_remarks TEXT`,
+      `ALTER TABLE job_cards ADD COLUMN IF NOT EXISTS customer_remarks TEXT`,
     ];
 
     // Add unique constraint on crm_ticket_number (safe if already exists)

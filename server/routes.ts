@@ -519,11 +519,20 @@ export async function registerRoutes(app: Express) {
   app.post("/api/service-requests/:id/complete-secure", jwtAuth, requireRole("engineer"), async (req: Request, res: Response) => {
     try {
       const serviceRequestId = Number(req.params.id);
-      const { aadhaarMasked, signatureData, assistedSignature, geoPhotoData, latitude, longitude } = req.body;
+      const { 
+        signatureData,          // customer signature (base64)
+        engineerSignatureData,  // engineer signature (base64)
+        assistedSignature, 
+        geoPhotoData, 
+        latitude, 
+        longitude,
+        engineerRemarks,
+        customerRemarks,
+      } = req.body;
 
-      // Validate all mandatory fields
-      if (!aadhaarMasked) return res.status(400).json({ message: "Aadhaar verification is mandatory" });
+      // Validate mandatory fields
       if (!signatureData) return res.status(400).json({ message: "Customer signature is mandatory" });
+      if (!engineerSignatureData) return res.status(400).json({ message: "Engineer signature is mandatory" });
       if (!geoPhotoData) return res.status(400).json({ message: "Geo-tagged customer photo is mandatory" });
       if (!latitude || !longitude) return res.status(400).json({ message: "GPS coordinates are mandatory" });
 
@@ -538,9 +547,22 @@ export async function registerRoutes(app: Express) {
       const existing = await storage.getServiceCompletion(serviceRequestId);
       if (existing) return res.status(400).json({ message: "Service already completed with secure closure" });
 
+      // Save both digital signatures to signatures table
+      await storage.saveSignature(serviceRequestId, "customer", signatureData);
+      await storage.saveSignature(serviceRequestId, "engineer", engineerSignatureData);
+
+      // Save remarks to job card (upsert)
+      if (engineerRemarks || customerRemarks) {
+        await storage.upsertJobCard(serviceRequestId, {
+          customerName: sr.pilotName || "N/A",
+          engineerRemarks: engineerRemarks || "",
+          customerRemarks: customerRemarks || "",
+        });
+      }
+
       // Create the secure completion record
       const completion = await storage.createServiceCompletion(serviceRequestId, {
-        aadhaarMasked,
+        aadhaarMasked: "SKIPPED",
         signatureData,
         assistedSignature: assistedSignature || false,
         geoPhotoData,
@@ -554,7 +576,7 @@ export async function registerRoutes(app: Express) {
         status: "completed",
       });
 
-      console.log(`[Secure Completion] Service Request #${serviceRequestId} completed with full verification.`);
+      console.log(`[Secure Completion] Service Request #${serviceRequestId} completed with dual signatures.`);
       res.json({ success: true, completion });
     } catch (err: any) {
       console.error("[Secure Completion Error]", err.message);

@@ -3,7 +3,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Shield, CheckCircle, PenTool, Camera, MapPin, Loader2, AlertTriangle } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Shield, CheckCircle, PenTool, Camera, MapPin, Loader2, AlertTriangle, MessageSquare } from "lucide-react";
 import { useSecureComplete } from "@/hooks/use-service-requests";
 
 interface ServiceCompletionModalProps {
@@ -13,14 +14,22 @@ interface ServiceCompletionModalProps {
 }
 
 const STEPS = [
-  { id: 1, title: "Digital Signature", icon: PenTool },
-  { id: 2, title: "Customer Photo", icon: Camera },
+  { id: 1, title: "Engineer Sign", icon: PenTool },
+  { id: 2, title: "Customer Sign", icon: PenTool },
+  { id: 3, title: "Remarks", icon: MessageSquare },
+  { id: 4, title: "Customer Photo", icon: Camera },
 ];
 
 export function ServiceCompletionModal({ open, onOpenChange, requestId }: ServiceCompletionModalProps) {
   const [currentStep, setCurrentStep] = useState(1);
 
-  // Step 1: Signature
+  // Step 1: Engineer Signature
+  const [engineerSignatureData, setEngineerSignatureData] = useState("");
+  const engSigCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawingEng, setIsDrawingEng] = useState(false);
+  const [hasDrawnEng, setHasDrawnEng] = useState(false);
+
+  // Step 2: Customer Signature
   const [hasCustomerMobile, setHasCustomerMobile] = useState<boolean | null>(null);
   const [signatureData, setSignatureData] = useState("");
   const [assistedSignature, setAssistedSignature] = useState(false);
@@ -28,7 +37,11 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
 
-  // Step 2: Geo Photo
+  // Step 3: Remarks
+  const [engineerRemarks, setEngineerRemarks] = useState("");
+  const [customerRemarks, setCustomerRemarks] = useState("");
+
+  // Step 4: Geo Photo
   const [geoPhotoData, setGeoPhotoData] = useState("");
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
@@ -49,26 +62,36 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
     };
   }, []);
 
-  // Init signature canvas
+  // ── Generic Signature Canvas Helpers ──────────────────────────────
+  const initCanvas = (canvas: HTMLCanvasElement | null) => {
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * 2;
+    canvas.height = rect.height * 2;
+    ctx.scale(2, 2);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 2;
+  };
+
+  // Init engineer signature canvas
   useEffect(() => {
-    if (currentStep === 1 && sigCanvasRef.current) {
-      const canvas = sigCanvasRef.current;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * 2;
-      canvas.height = rect.height * 2;
-      ctx.scale(2, 2);
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.strokeStyle = "#1e293b";
-      ctx.lineWidth = 2;
+    if (currentStep === 1 && engSigCanvasRef.current) {
+      initCanvas(engSigCanvasRef.current);
+    }
+  }, [currentStep]);
+
+  // Init customer signature canvas
+  useEffect(() => {
+    if (currentStep === 2 && sigCanvasRef.current && hasCustomerMobile !== null) {
+      initCanvas(sigCanvasRef.current);
     }
   }, [currentStep, hasCustomerMobile]);
 
-  // ── Signature Handlers ──────────────────────────────
-  const getSigPos = (e: React.MouseEvent | React.TouchEvent) => {
-    const canvas = sigCanvasRef.current;
+  const getSigPos = (e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement | null) => {
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
     if ("touches" in e) {
@@ -77,12 +100,50 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
 
+  // ── Engineer Signature Handlers ──────────────────────────────
+  const startDrawingEng = (e: React.MouseEvent | React.TouchEvent) => {
+    const ctx = engSigCanvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    setIsDrawingEng(true);
+    setHasDrawnEng(true);
+    const pos = getSigPos(e, engSigCanvasRef.current);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+  };
+
+  const drawEng = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDrawingEng) return;
+    const ctx = engSigCanvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    const pos = getSigPos(e, engSigCanvasRef.current);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+  };
+
+  const stopDrawingEng = () => setIsDrawingEng(false);
+
+  const clearEngCanvas = () => {
+    const canvas = engSigCanvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!ctx || !canvas) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setHasDrawnEng(false);
+    setEngineerSignatureData("");
+  };
+
+  const saveEngSig = () => {
+    const canvas = engSigCanvasRef.current;
+    if (!canvas) return;
+    setEngineerSignatureData(canvas.toDataURL("image/png"));
+  };
+
+  // ── Customer Signature Handlers ──────────────────────────────
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
     const ctx = sigCanvasRef.current?.getContext("2d");
     if (!ctx) return;
     setIsDrawing(true);
     setHasDrawn(true);
-    const pos = getSigPos(e);
+    const pos = getSigPos(e, sigCanvasRef.current);
     ctx.beginPath();
     ctx.moveTo(pos.x, pos.y);
   };
@@ -91,7 +152,7 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
     if (!isDrawing) return;
     const ctx = sigCanvasRef.current?.getContext("2d");
     if (!ctx) return;
-    const pos = getSigPos(e);
+    const pos = getSigPos(e, sigCanvasRef.current);
     ctx.lineTo(pos.x, pos.y);
     ctx.stroke();
   };
@@ -110,8 +171,7 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
   const saveSig = () => {
     const canvas = sigCanvasRef.current;
     if (!canvas) return;
-    const data = canvas.toDataURL("image/png");
-    setSignatureData(data);
+    setSignatureData(canvas.toDataURL("image/png"));
   };
 
   // ── Geo Photo Handlers ──────────────────────────────
@@ -170,22 +230,26 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
 
   // ── Final Submit ──────────────────────────────
   const handleFinalSubmit = async () => {
-    if (!signatureData || !geoPhotoData || latitude === null || longitude === null) return;
+    if (!signatureData || !engineerSignatureData || !geoPhotoData || latitude === null || longitude === null) return;
 
     await secureCompleteMutation.mutateAsync({
       id: requestId,
-      aadhaarMasked: "SKIPPED",
       signatureData,
+      engineerSignatureData,
       assistedSignature,
       geoPhotoData,
       latitude,
       longitude,
+      engineerRemarks,
+      customerRemarks,
     });
     onOpenChange(false);
   };
 
-  const canProceedStep1 = !!signatureData;
-  const canProceedStep2 = !!geoPhotoData && latitude !== null && longitude !== null;
+  const canProceedStep1 = !!engineerSignatureData;
+  const canProceedStep2 = !!signatureData;
+  const canProceedStep3 = true; // Remarks are optional
+  const canProceedStep4 = !!geoPhotoData && latitude !== null && longitude !== null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -207,25 +271,76 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
               <React.Fragment key={step.id}>
                 <div className="flex flex-col items-center gap-1">
                   <div className={`
-                    h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold transition-all
+                    h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold transition-all
                     ${isDone ? 'bg-green-500 text-white' : isActive ? 'bg-blue-600 text-white ring-4 ring-blue-200' : 'bg-slate-200 text-slate-500'}
                   `}>
-                    {isDone ? <CheckCircle className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+                    {isDone ? <CheckCircle className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
                   </div>
-                  <span className={`text-[10px] font-medium ${isActive ? 'text-blue-600' : 'text-muted-foreground'}`}>
+                  <span className={`text-[9px] font-medium ${isActive ? 'text-blue-600' : 'text-muted-foreground'}`}>
                     {step.title}
                   </span>
                 </div>
                 {idx < STEPS.length - 1 && (
-                  <div className={`flex-1 h-0.5 mx-2 ${idx < currentStep - 1 ? 'bg-green-500' : 'bg-slate-200'}`} />
+                  <div className={`flex-1 h-0.5 mx-1 ${idx < currentStep - 1 ? 'bg-green-500' : 'bg-slate-200'}`} />
                 )}
               </React.Fragment>
             );
           })}
         </div>
 
-        {/* Step 1: Digital Signature */}
+        {/* Step 1: Engineer Digital Signature */}
         {currentStep === 1 && (
+          <div className="space-y-4">
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+              <PenTool className="h-4 w-4 inline mr-1" />
+              <strong>Engineer</strong> — Please sign below to confirm the service work.
+            </div>
+
+            {!engineerSignatureData ? (
+              <>
+                <Label>Engineer Signature</Label>
+                <div className="relative border-2 border-dashed border-slate-300 rounded-lg bg-white overflow-hidden">
+                  <canvas
+                    ref={engSigCanvasRef}
+                    className="w-full cursor-crosshair touch-none"
+                    style={{ height: "160px" }}
+                    onMouseDown={startDrawingEng}
+                    onMouseMove={drawEng}
+                    onMouseUp={stopDrawingEng}
+                    onMouseLeave={stopDrawingEng}
+                    onTouchStart={startDrawingEng}
+                    onTouchMove={drawEng}
+                    onTouchEnd={stopDrawingEng}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={clearEngCanvas}>Clear</Button>
+                  {hasDrawnEng && <Button size="sm" onClick={saveEngSig}>✓ Save Signature</Button>}
+                </div>
+              </>
+            ) : (
+              <div className="text-center space-y-3 py-4">
+                <div className="h-16 w-16 rounded-full bg-green-100 mx-auto flex items-center justify-center">
+                  <PenTool className="h-8 w-8 text-green-600" />
+                </div>
+                <h3 className="font-semibold text-lg">Engineer Signature Captured ✓</h3>
+                <img src={engineerSignatureData} alt="Engineer Signature" className="mx-auto border rounded max-h-24" />
+                <Button variant="outline" size="sm" onClick={() => { setEngineerSignatureData(""); setHasDrawnEng(false); }}>
+                  Redo Signature
+                </Button>
+              </div>
+            )}
+
+            {canProceedStep1 && (
+              <Button className="w-full" onClick={() => setCurrentStep(2)}>
+                Continue to Customer Signature →
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Step 2: Customer Digital Signature */}
+        {currentStep === 2 && (
           <div className="space-y-4">
             {!signatureData ? (
               <>
@@ -277,22 +392,64 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
                 <div className="h-16 w-16 rounded-full bg-green-100 mx-auto flex items-center justify-center">
                   <PenTool className="h-8 w-8 text-green-600" />
                 </div>
-                <h3 className="font-semibold text-lg">Signature Captured ✓</h3>
+                <h3 className="font-semibold text-lg">Customer Signature Captured ✓</h3>
                 {assistedSignature && <Badge variant="outline" className="text-amber-700">Assisted Mode</Badge>}
-                <img src={signatureData} alt="Signature" className="mx-auto border rounded max-h-24" />
+                <img src={signatureData} alt="Customer Signature" className="mx-auto border rounded max-h-24" />
               </div>
             )}
 
-            {canProceedStep1 && (
-              <Button className="w-full" onClick={() => setCurrentStep(2)}>
-                Continue to Photo →
-              </Button>
-            )}
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setCurrentStep(1)}>← Back</Button>
+              {canProceedStep2 && (
+                <Button className="flex-1" onClick={() => setCurrentStep(3)}>
+                  Continue to Remarks →
+                </Button>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Step 2: Geo-Tagged Customer Photo */}
-        {currentStep === 2 && (
+        {/* Step 3: Engineer & Customer Remarks */}
+        {currentStep === 3 && (
+          <div className="space-y-4">
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+              <MessageSquare className="h-4 w-4 inline mr-1" />
+              Add any <strong>remarks or observations</strong> about the service.
+            </div>
+
+            <div className="space-y-2">
+              <Label>Engineer Remarks / Pilot Remarks</Label>
+              <Textarea
+                placeholder="Enter engineer observations, pilot remarks, or notes about the service..."
+                value={engineerRemarks}
+                onChange={(e) => setEngineerRemarks(e.target.value)}
+                rows={4}
+                className="resize-none"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Customer Remarks (Optional)</Label>
+              <Textarea
+                placeholder="Customer feedback or comments about the service..."
+                value={customerRemarks}
+                onChange={(e) => setCustomerRemarks(e.target.value)}
+                rows={3}
+                className="resize-none"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setCurrentStep(2)}>← Back</Button>
+              <Button className="flex-1" onClick={() => setCurrentStep(4)}>
+                Continue to Photo →
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Geo-Tagged Customer Photo */}
+        {currentStep === 4 && (
           <div className="space-y-4">
             {!geoPhotoData ? (
               <>
@@ -345,8 +502,8 @@ export function ServiceCompletionModal({ open, onOpenChange, requestId }: Servic
             )}
 
             <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setCurrentStep(1)}>← Back</Button>
-              {canProceedStep2 && (
+              <Button variant="ghost" onClick={() => setCurrentStep(3)}>← Back</Button>
+              {canProceedStep4 && (
                 <Button
                   className="flex-1 bg-green-600 hover:bg-green-700"
                   onClick={handleFinalSubmit}

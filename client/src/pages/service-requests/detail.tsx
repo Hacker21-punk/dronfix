@@ -54,6 +54,8 @@ import {
 } from "@/components/ui/table";
 import type { Expense } from "@shared/schema";
 
+import { JobSheetDialog } from "@/components/job-sheet-dialog";
+
 export default function ServiceRequestDetail() {
   const { id } = useParams();
   const requestId = Number(id);
@@ -81,6 +83,7 @@ export default function ServiceRequestDetail() {
 
   const role = profile?.role || 'engineer';
   const isEngineerAccepted = ['accepted', 'in_progress', 'completed', 'billed'].includes(request.status);
+  const shouldShowSections = role === 'admin' || (role === 'engineer' && isEngineerAccepted);
 
   const steps = ['pending', 'accepted', 'in_progress', 'completed', 'billed'];
   const currentStep = steps.indexOf(request.status);
@@ -307,47 +310,67 @@ export default function ServiceRequestDetail() {
           </Card>
 
           {/* Documents Upload */}
-          <Card>
-            <CardHeader><CardTitle>Documents</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <DocumentUpload 
-                label="Job Sheet" 
-                url={request.documents?.find((d: any) => d.type === 'job_sheet')?.fileUrl} 
-                canUpload={role === 'engineer'}
-                onUpload={(url) => uploadDocumentMutation.mutate({ id: requestId, type: 'job_sheet', fileUrl: url })} 
-              />
-              <DocumentUpload 
-                label="Feedback Form" 
-                url={request.documents?.find((d: any) => d.type === 'feedback')?.fileUrl} 
-                canUpload={role === 'engineer'}
-                onUpload={(url) => uploadDocumentMutation.mutate({ id: requestId, type: 'feedback', fileUrl: url })} 
-              />
-              <DocumentUpload 
-                label="Crash Report" 
-                url={request.documents?.find((d: any) => d.type === 'crash_report')?.fileUrl} 
-                canUpload={role === 'engineer'}
-                onUpload={(url) => uploadDocumentMutation.mutate({ id: requestId, type: 'crash_report', fileUrl: url })} 
-              />
-              <DocumentUpload 
-                label="Audit Report" 
-                url={request.documents?.find((d: any) => d.type === 'audit_report')?.fileUrl} 
-                canUpload={role === 'engineer'}
-                onUpload={(url) => uploadDocumentMutation.mutate({ id: requestId, type: 'audit_report', fileUrl: url })} 
-              />
-              <DocumentUpload 
-                label="Log Report" 
-                url={request.documents?.find((d: any) => d.type === 'log_report')?.fileUrl} 
-                canUpload={role === 'engineer'}
-                onUpload={(url) => uploadDocumentMutation.mutate({ id: requestId, type: 'log_report', fileUrl: url })} 
-              />
-            </CardContent>
-          </Card>
+          {shouldShowSections && (
+            <Card>
+              <CardHeader><CardTitle>Documents</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {role === 'engineer' ? (
+                  <div className="flex flex-col gap-2 p-3 border rounded-lg bg-muted/20">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Job Sheet</span>
+                      {request.documents?.find((d: any) => d.type === 'job_sheet') && (
+                        <Badge variant="outline" className="bg-green-50 text-green-700 hover:bg-green-50">Filled</Badge>
+                      )}
+                    </div>
+                    <JobSheetDialog 
+                      requestId={requestId} 
+                      engineerName={profile?.name || ''} 
+                      existingJobCard={request.jobCards?.[0]} 
+                    />
+                  </div>
+                ) : (
+                  <DocumentUpload 
+                    label="Job Sheet" 
+                    url={request.documents?.find((d: any) => d.type === 'job_sheet')?.fileUrl} 
+                    canUpload={role === 'engineer'}
+                    onUpload={(url) => uploadDocumentMutation.mutate({ id: requestId, type: 'job_sheet', fileUrl: url })} 
+                  />
+                )}
+                <DocumentUpload 
+                  label="Feedback Form" 
+                  url={request.documents?.find((d: any) => d.type === 'feedback')?.fileUrl} 
+                  canUpload={role === 'engineer'}
+                  onUpload={(url) => uploadDocumentMutation.mutate({ id: requestId, type: 'feedback', fileUrl: url })} 
+                />
+                <DocumentUpload 
+                  label="Crash Report" 
+                  url={request.documents?.find((d: any) => d.type === 'crash_report')?.fileUrl} 
+                  canUpload={role === 'engineer'}
+                  onUpload={(url) => uploadDocumentMutation.mutate({ id: requestId, type: 'crash_report', fileUrl: url })} 
+                />
+                <DocumentUpload 
+                  label="Audit Report" 
+                  url={request.documents?.find((d: any) => d.type === 'audit_report')?.fileUrl} 
+                  canUpload={role === 'engineer'}
+                  onUpload={(url) => uploadDocumentMutation.mutate({ id: requestId, type: 'audit_report', fileUrl: url })} 
+                />
+                <DocumentUpload 
+                  label="Log Report" 
+                  url={request.documents?.find((d: any) => d.type === 'log_report')?.fileUrl} 
+                  canUpload={role === 'engineer'}
+                  onUpload={(url) => uploadDocumentMutation.mutate({ id: requestId, type: 'log_report', fileUrl: url })} 
+                />
+              </CardContent>
+            </Card>
+          )}
 
-          {/* Digital Job Card */}
-          <JobCardSection requestId={requestId} request={request} role={role} />
+          {/* Digital Job Card (For admin reference or if completely removed for engineer) */}
+          {role === 'admin' && (
+            <JobCardSection requestId={requestId} request={request} role={role} />
+          )}
 
           {/* Invoice Details (if filled) */}
-          {request.invoiceNumber && (
+          {shouldShowSections && request.invoiceNumber && (
             <Card>
               <CardHeader><CardTitle className="flex items-center gap-2"><Receipt className="h-4 w-4" /> Invoice Details</CardTitle></CardHeader>
               <CardContent className="space-y-2 text-sm">
@@ -362,12 +385,12 @@ export default function ServiceRequestDetail() {
           )}
 
           {/* Logistics / Shipping Details */}
-          {(role === 'logistics' || role === 'admin' || request.shippingPartner) && (
+          {shouldShowSections && (role === 'logistics' || role === 'admin' || request.shippingPartner) && (
             <LogisticsSection requestId={requestId} request={request} role={role} />
           )}
 
            {/* PDF Report Download */}
-           {(request.status === 'completed' || request.status === 'billed') && (
+           {shouldShowSections && (request.status === 'completed' || request.status === 'billed') && (
              <Button variant="outline" className="w-full" onClick={() => window.open(`/api/service-requests/${requestId}/report`, '_blank')}>
                <Download className="h-4 w-4 mr-2" /> Download Full Report
              </Button>
@@ -1709,13 +1732,20 @@ function JobCardSection({ requestId, request, role }: { requestId: number; reque
     html2pdf().set(opt as any).from(element).save();
   };
 
-  const pdfCanvas = useMemo(() => (
-    <JobCardPDF 
-      ref={pdfRef} 
-      request={request} 
-      jobCard={jobCard} 
-    />
-  ), [request, jobCard]);
+  const pdfCanvas = useMemo(() => {
+    const engSig = request?.signatures?.find((s: any) => s.type === 'engineer')?.signatureData;
+    const custSig = request?.signatures?.find((s: any) => s.type === 'customer')?.signatureData;
+    return (
+      <JobCardPDF 
+        ref={pdfRef} 
+        request={request} 
+        jobCard={jobCard}
+        engineerSignature={engSig}
+        customerSignature={custSig}
+        partsConsumed={request?.partsConsumed || []}
+      />
+    );
+  }, [request, jobCard]);
 
   return (
     <Card>

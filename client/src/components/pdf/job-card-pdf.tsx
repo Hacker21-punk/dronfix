@@ -6,10 +6,11 @@ interface JobCardPDFProps {
   jobCard: any;
   engineerSignature?: string;
   customerSignature?: string;
+  partsConsumed?: any[];
 }
 
 export const JobCardPDF = forwardRef<HTMLDivElement, JobCardPDFProps>(
-  ({ request, jobCard, engineerSignature, customerSignature }, ref) => {
+  ({ request, jobCard, engineerSignature, customerSignature, partsConsumed = [] }, ref) => {
     
     // Pixel-perfect Checkbox matching PDF
     const CheckBox = ({ label, className = "" }: { label: string, className?: string }) => (
@@ -288,18 +289,22 @@ export const JobCardPDF = forwardRef<HTMLDivElement, JobCardPDFProps>(
               </tr>
             </thead>
             <tbody>
-              {Array.from({ length: 10 }).map((_, i) => (
-                <tr key={i} className="h-[16px]">
-                  <td className="border border-black px-1 py-0 text-center font-bold">{i + 1}</td>
-                  <td className="border border-black px-1 py-0"></td>
-                  <td className="border border-black px-1 py-0 px-1 truncate">{i === 0 && jobCard?.partsReplaced ? jobCard.partsReplaced : ''}</td>
-                  <td className="border border-black px-1 py-0 text-center"></td>
-                  <td className="border border-black px-1 py-0 text-center font-bold">{i + 11}</td>
-                  <td className="border border-black px-1 py-0"></td>
-                  <td className="border border-black px-1 py-0 px-1"></td>
-                  <td className="border border-black px-1 py-0 text-center"></td>
-                </tr>
-              ))}
+              {Array.from({ length: 10 }).map((_, i) => {
+                const leftPart = partsConsumed[i];
+                const rightPart = partsConsumed[i + 10];
+                return (
+                  <tr key={i} className="h-[16px]">
+                    <td className="border border-black px-1 py-0 text-center font-bold">{i + 1}</td>
+                    <td className="border border-black px-1 py-0 truncate">{leftPart?.hsnCode || leftPart?.materialCodeSnapshot || ''}</td>
+                    <td className="border border-black px-1 py-0 px-1 truncate">{leftPart?.materialDescriptionSnapshot || leftPart?.itemName || ''}</td>
+                    <td className="border border-black px-1 py-0 text-center">{leftPart?.quantity || ''}</td>
+                    <td className="border border-black px-1 py-0 text-center font-bold">{i + 11}</td>
+                    <td className="border border-black px-1 py-0 truncate">{rightPart?.hsnCode || rightPart?.materialCodeSnapshot || ''}</td>
+                    <td className="border border-black px-1 py-0 px-1 truncate">{rightPart?.materialDescriptionSnapshot || rightPart?.itemName || ''}</td>
+                    <td className="border border-black px-1 py-0 text-center">{rightPart?.quantity || ''}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 
@@ -331,7 +336,7 @@ export const JobCardPDF = forwardRef<HTMLDivElement, JobCardPDFProps>(
                 <tr>
                   <td className="border-r border-black px-2 py-1.5 align-top h-[70px] w-[75%] font-bold">
                     Engineer Remarks /Pilot Remarks :
-                    <div className="font-normal mt-1.5 block">{jobCard?.recommendations || ''}</div>
+                    <div className="font-normal mt-1.5 block">{jobCard?.engineerRemarks || jobCard?.recommendations || ''}</div>
                   </td>
                   <td className="p-1 w-[25%] row-span-2 relative text-center align-middle">
                     {customerSignature ? (
