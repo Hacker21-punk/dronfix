@@ -204,20 +204,6 @@ export default function ServiceRequestDetail() {
                   </div>
                 </>
               )}
-              <Separator />
-              <div>
-                <h4 className="text-sm font-medium text-muted-foreground mb-2">Complaint</h4>
-                <Badge variant="outline" className="mb-2 text-xs">{(request.complaintType || 'general_service').replace(/_/g, ' ')}</Badge>
-                {request.customerStatement ? (
-                  <div className="p-4 bg-muted/40 rounded-lg italic text-muted-foreground">
-                    "{request.customerStatement}"
-                  </div>
-                ) : request.complaint ? (
-                  <div className="p-4 bg-muted/40 rounded-lg italic text-muted-foreground">
-                    "{request.complaint}"
-                  </div>
-                ) : null}
-              </div>
               {/* Requested Parts from parts_requested table */}
               {request.partsRequested && request.partsRequested.length > 0 && (
                 <>
@@ -247,6 +233,20 @@ export default function ServiceRequestDetail() {
                   </div>
                 </>
               )}
+              <Separator />
+              <div>
+                <h4 className="text-sm font-medium text-muted-foreground mb-2">Complaint</h4>
+                <Badge variant="outline" className="mb-2 text-xs">{(request.complaintType || 'general_service').replace(/_/g, ' ')}</Badge>
+                {request.customerStatement ? (
+                  <div className="p-4 bg-muted/40 rounded-lg italic text-muted-foreground">
+                    "{request.customerStatement}"
+                  </div>
+                ) : request.complaint ? (
+                  <div className="p-4 bg-muted/40 rounded-lg italic text-muted-foreground">
+                    "{request.complaint}"
+                  </div>
+                ) : null}
+              </div>
             </CardContent>
           </Card>
 
